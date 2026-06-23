@@ -242,7 +242,14 @@ def buscar_djen(cfg, data_disp, cadastro, processos_extra):
 
     base = cfg.get("djen_url", "https://comunicaapi.pje.jus.br/api/v1/comunicacao")
     data_str = data_disp.strftime("%Y-%m-%d")
-    headers = {"User-Agent": "CACT-Rotina/1.0", "Accept": "application/json"}
+    headers = {
+        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        "Referer": "https://comunica.pje.jus.br/",
+        "Origin": "https://comunica.pje.jus.br",
+    }
     timeout = cfg.get("timeout_segundos", 60)
     pausa = cfg.get("pausa_entre_consultas_seg", 0.5)
     itens_por_pagina = cfg.get("itens_por_pagina", 100)
