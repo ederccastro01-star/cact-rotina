@@ -1,0 +1,21 @@
+name: CACT - Obter Token do OneDrive
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  obter-token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v4
+      - name: Preparar o Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Instalar dependencias
+        run: pip install requests
+      - name: Obter o refresh token (siga as instrucoes no log)
+        env:
+          GRAPH_CLIENT_ID: ${{ secrets.GRAPH_CLIENT_ID }}
+        run: python obter_token_device.py
