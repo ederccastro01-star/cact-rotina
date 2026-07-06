@@ -18,9 +18,37 @@ TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 SCOPE = "offline_access Files.ReadWrite User.Read"
 
 
+# Onde guardar o refresh token mais recente (para ele NÃO expirar com o tempo).
+# A cada renovação a Microsoft devolve um novo refresh token; salvamos e reusamos
+# sempre o mais recente, mantendo o acesso vivo indefinidamente.
+TOKEN_STORE = os.environ.get("REFRESH_TOKEN_FILE", "/opt/cact/refresh_token_atual.txt")
+
+
+def _carregar_refresh_token():
+    try:
+        if os.path.exists(TOKEN_STORE):
+            with open(TOKEN_STORE, "r", encoding="utf-8") as fh:
+                t = fh.read().strip()
+                if t:
+                    return t
+    except Exception:
+        pass
+    return os.environ.get("GRAPH_REFRESH_TOKEN", "").strip()
+
+
+def _salvar_refresh_token(rt):
+    try:
+        with open(TOKEN_STORE, "w", encoding="utf-8") as fh:
+            fh.write(rt)
+    except Exception:
+        pass
+
+
 def get_access_token():
     cid = os.environ["GRAPH_CLIENT_ID"]
-    rt = os.environ["GRAPH_REFRESH_TOKEN"]
+    rt = _carregar_refresh_token()
+    if not rt:
+        raise RuntimeError("Refresh token do OneDrive não encontrado (nem no arquivo nem no ambiente).")
     data = {
         "client_id": cid,
         "grant_type": "refresh_token",
@@ -30,7 +58,11 @@ def get_access_token():
     r = requests.post(TOKEN_URL, data=data, timeout=60)
     if r.status_code != 200:
         raise RuntimeError(f"Falha ao renovar token ({r.status_code}): {r.text[:300]}")
-    return r.json()["access_token"]
+    j = r.json()
+    novo_rt = j.get("refresh_token")
+    if novo_rt:
+        _salvar_refresh_token(novo_rt)   # mantém o token sempre atual (evita a expiração)
+    return j["access_token"]
 
 
 def _h(tok):
