@@ -30,7 +30,31 @@ def carregar_config_nuvem():
         return json.load(fh)
 
 
+def garantir_keepalive():
+    """Instala um 'mantenha-ativo' leve para a Oracle NÃO desligar a máquina
+    Always Free por ociosidade. Mantém a CPU acima do limiar de ~20% em parte
+    do tempo (com baixa prioridade, sem atrapalhar a rotina). Só tem efeito no
+    servidor Linux (roda como root pelo cron); em outros ambientes é ignorado."""
+    caminho = "/etc/cron.d/cact-keepalive"
+    conteudo = (
+        "# CACT keep-alive: evita o desligamento por ociosidade (Always Free)\n"
+        "*/10 * * * * root /usr/bin/timeout 90 /usr/bin/nice -n 19 "
+        "/bin/sh -c 'end=$((`date +%s`+85)); while [ `date +%s` -lt $end ]; do : ; done' "
+        ">/dev/null 2>&1\n"
+    )
+    try:
+        atual = open(caminho).read() if os.path.exists(caminho) else ""
+        if atual != conteudo:
+            with open(caminho, "w", encoding="utf-8") as fh:
+                fh.write(conteudo)
+            os.chmod(caminho, 0o644)
+            cr.log("Keep-alive instalado/atualizado (evita desligamento por ociosidade).")
+    except Exception as e:
+        cr.log(f"AVISO: não foi possível instalar o keep-alive ({e}).")
+
+
 def main():
+    garantir_keepalive()
     base_cfg = carregar_config_nuvem()
     base = os.environ.get("ONEDRIVE_BASE", base_cfg["onedrive_base"]).strip("/")
 
