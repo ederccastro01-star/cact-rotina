@@ -219,15 +219,17 @@ def _extrai_campo(item, *chaves):
     return ""
 
 
-# Caracteres de controle que o Excel/openpyxl NÃO aceita em células.
-RE_ILEGAIS_XLSX = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
-
-
+# Remove TODOS os caracteres de controle que o Excel/openpyxl pode recusar:
+# controles C0 (0x00-0x1F, exceto tab/newline/cr), DEL (0x7F) e controles C1 (0x80-0x9F).
 def limpar_texto(v):
-    """Remove caracteres de controle inválidos que travariam a gravação no xlsx.
-    Preserva quebras de linha (\\n), tabulação (\\t) e o resto do conteúdo."""
+    """Deixa o valor seguro para gravar no xlsx: mantém tabulação, quebras de
+    linha, texto imprimível e acentos/Unicode; descarta apenas caracteres de
+    controle inválidos (que travariam o openpyxl)."""
     if isinstance(v, str):
-        return RE_ILEGAIS_XLSX.sub("", v)
+        return "".join(
+            ch for ch in v
+            if ch in "\t\n\r" or 0x20 <= ord(ch) <= 0x7E or ord(ch) >= 0xA0
+        )
     return v
 
 
@@ -356,7 +358,12 @@ def salvar_relatorio_detalhado(pubs, cfg, data_disp):
     for c in ws[1]:
         c.font = Font(bold=True)
     for p in pubs:
-        ws.append([limpar_texto(p["processo"]), limpar_texto(p["texto"])])
+        linha = [limpar_texto(p["processo"]), limpar_texto(p["texto"])]
+        try:
+            ws.append(linha)
+        except Exception:
+            # garantia final: mantém apenas ASCII imprimível + tab/quebra de linha
+            ws.append([re.sub(r"[^\x09\x0a\x0d\x20-\x7e]", "", str(x)) for x in linha])
     ws.column_dimensions["A"].width = 28
     ws.column_dimensions["B"].width = 120
     wb.save(caminho)
