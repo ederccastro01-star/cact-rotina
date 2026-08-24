@@ -376,7 +376,7 @@ def indexar_agenda(cfg):
             conj.add(n)
             store[n] = {
                 "Reclamante": row[5], "Reclamado": row[6], "Advogado": row[7],
-                "Prioridade": row[8], "Complexidade": row[9], "Despacho": row[10],
+                "Prioridade": row[8], "Cliente": row[9], "Despacho": row[10],
             }
 
     varre(cfg.get("aba_publicacoes", "Publicações"), ref_pub, set_pub)
@@ -429,7 +429,24 @@ KW_DECISAO = ["sentença", "sentenca", "acórdão", "acordao", "decisão", "deci
               "homologo os cálculos", "homologo os calculos", "dispositivo"]
 
 
-def classificar_heuristica(texto, feriados=None, data_publicado=None):
+def _destinatario_heuristico(texto):
+    """Extrai, de forma simples, a parte intimada (destinatário) do teor."""
+    nome = ""
+    m = re.search(r"Intimado\(s\)\s*/\s*Citado\(s\)\s*:?\s*\n?\s*[-–]\s*([^\n]{2,80})", texto)
+    if m:
+        nome = re.sub(r"\s+", " ", m.group(1)).strip()
+    t = sem_acento(texto).lower()
+    polo = ""
+    if re.search(r"\bao\s+r[eé]u\b|reclamado\(a\)|ao\(a\)\s*reclamado|\br[eé]u:", t):
+        polo = "Réu"
+    elif re.search(r"ao\s+reclamante|ao\s+autor|\bexequente\b|autor:", t):
+        polo = "Autor"
+    if nome and polo:
+        return f"{nome} ({polo})"
+    return nome or "Não identificado"
+
+
+def classificar_heuristica(texto, feriados=None, data_publicado=None, cliente=None):
     """Classificação por regras — usada apenas quando NÃO há chave do Claude.
     É propositalmente conservadora: só agenda prazo para Embargos de Declaração
     (5 dias, ou o prazo menor explícito), evitando datas indevidas. Os prazos de
@@ -471,24 +488,27 @@ def classificar_heuristica(texto, feriados=None, data_publicado=None):
     if honor:
         resumo += " ATENÇÃO HONORÁRIOS."
 
-    return {"peca": peca, "prazo_dias": prazo_dias, "resumo": resumo,
+    return {"destinatario": _destinatario_heuristico(texto),
+            "peca": peca, "prazo_dias": prazo_dias, "resumo": resumo,
             "honorarios": honor, "decisao": decisao}
 
 
-PROMPT_SISTEMA = """Você é assistente jurídico de um escritório de advocacia trabalhista (CACT - Castro Advocacia & Cálculos Trabalhistas). Recebe o inteiro teor de uma intimação/publicação processual e deve devolver uma classificação em JSON, seguindo ESTAS regras do escritório:
+PROMPT_SISTEMA = """Você é assistente jurídico de um escritório de advocacia trabalhista (CACT - Castro Advocacia & Cálculos Trabalhistas). Você recebe (a) o inteiro teor de uma intimação/publicação processual e (b) o campo "Cliente", que indica o polo que o ESCRITÓRIO representa nesse processo ("AUTOR(A)" ou "RÉU"). Deve devolver uma classificação em JSON, seguindo ESTAS regras do escritório:
 
 REGRAS:
-1. "peca": a providência a ser tomada pelo escritório. Use rótulos curtos, por exemplo: "Acompanhamento", "Embargos de Declaração", "Manifestação sobre impugnação aos cálculos", "Contrarrazões", "Manifestação", "Informar dados/endereços", etc.
-2. HONORÁRIOS: sempre que a publicação disser respeito a pagamento, liberação, levantamento, alvará, transferência de valores, devolução de saldo, certidão/habilitação de crédito ou honorários, defina "honorarios": true e a "peca" deve ser "Atenção! Honorários" (acrescentando, se houver outra providência, em seguida).
-3. EMBARGOS DE DECLARAÇÃO: se a publicação for sentença, decisão ou acórdão de qualquer natureza, "peca" = "Embargos de Declaração" e "prazo_dias" = 5 (cinco), agendados ANTES do prazo de eventual recurso — EXCETO quando a publicação já previr prazo menor (use o menor).
-4. "prazo_dias": número de dias ÚTEIS para cumprir a determinação dirigida AO ESCRITÓRIO (a parte que representamos). Se o prazo for da parte adversa, ou se for mero acompanhamento sem providência nossa, use null.
-5. "resumo": resumo claro e objetivo (2 a 4 frases), em português simples, do teor da publicação e do que precisa ser feito; ao final, se for caso de honorários, inclua "ATENÇÃO HONORÁRIOS".
+1. "destinatario": identifique a PARTE INTIMADA (o destinatário da intimação) a partir do teor. Procure trechos como "Intimado(s)/Citado(s)", "AO RÉU", "AO(À) RECLAMADO(A)", "AO RECLAMANTE", "Fica o EXEQUENTE/EXECUTADO intimado", "AUTOR", "RÉU", "Fica V. Sa. intimado", etc. Devolva no formato: "NOME DA PARTE (Autor)" ou "NOME DA PARTE (Réu)". Se não der para identificar, use "Não identificado".
+2. USE O CAMPO "Cliente" PARA DECIDIR DE QUEM É O PRAZO. Se a determinação/prazo for dirigida à parte que o escritório representa (o "Cliente"), o prazo é NOSSO (preencha "prazo_dias"). Se for dirigida à parte adversa, então "peca" = "Acompanhamento" e "prazo_dias" = null.
+3. "peca": a providência a ser tomada pelo escritório. Rótulos curtos: "Acompanhamento", "Embargos de Declaração", "Manifestação sobre impugnação aos cálculos", "Contrarrazões", "Manifestação", "Informar dados/endereços", etc.
+4. HONORÁRIOS: sempre que a publicação disser respeito a pagamento, liberação, levantamento, alvará, transferência de valores, devolução de saldo, certidão/habilitação de crédito ou honorários, defina "honorarios": true e a "peca" deve ser "Atenção! Honorários" (acrescentando, se houver outra providência, em seguida).
+5. EMBARGOS DE DECLARAÇÃO: se a publicação for sentença, decisão ou acórdão de qualquer natureza, "peca" = "Embargos de Declaração" e "prazo_dias" = 5 (cinco), agendados ANTES do prazo de eventual recurso — EXCETO quando a publicação já previr prazo menor (use o menor).
+6. "prazo_dias": número de dias ÚTEIS para cumprir a determinação dirigida AO ESCRITÓRIO. Se o prazo for da parte adversa, ou for mero acompanhamento, use null.
+7. "resumo": resumo claro e objetivo (2 a 4 frases), em português simples, do teor e do que precisa ser feito; ao final, se for caso de honorários, inclua "ATENÇÃO HONORÁRIOS". NÃO repita o destinatário no resumo (ele já vai no campo "destinatario").
 
 Responda SOMENTE com um objeto JSON válido, sem texto antes ou depois, no formato:
-{"peca": "...", "prazo_dias": null ou inteiro, "honorarios": true/false, "decisao": true/false, "resumo": "..."}"""
+{"destinatario": "...", "peca": "...", "prazo_dias": null ou inteiro, "honorarios": true/false, "decisao": true/false, "resumo": "..."}"""
 
 
-def classificar_claude(texto, cfg):
+def classificar_claude(texto, cfg, cliente=None):
     """Classificação com a API do Claude (Anthropic). Retorna dict ou None em caso de falha."""
     chave = cfg.get("anthropic_api_key", "")
     if not chave or requests is None:
@@ -499,11 +519,13 @@ def classificar_claude(texto, cfg):
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
     }
+    entrada = (f"Cliente (polo que o escritório representa): {cliente or 'Não informado'}\n\n"
+               f"Inteiro teor da intimação:\n{texto[:9000]}")
     corpo = {
         "model": cfg.get("modelo_claude", "claude-sonnet-4-6"),
-        "max_tokens": 700,
+        "max_tokens": 800,
         "system": PROMPT_SISTEMA,
-        "messages": [{"role": "user", "content": texto[:9000]}],
+        "messages": [{"role": "user", "content": entrada}],
     }
     try:
         r = requests.post(url, headers=headers, json=corpo, timeout=cfg.get("timeout_segundos", 60))
@@ -516,6 +538,7 @@ def classificar_claude(texto, cfg):
             return None
         dados = json.loads(m.group(0))
         return {
+            "destinatario": dados.get("destinatario") or "",
             "peca": dados.get("peca") or "Acompanhamento",
             "prazo_dias": dados.get("prazo_dias"),
             "resumo": dados.get("resumo") or "",
@@ -531,7 +554,7 @@ def classificar_claude(texto, cfg):
 # 4) Geração do relatório de cruzamento
 # --------------------------------------------------------------------------- #
 HEADERS = ["Prazo", "Dia/Sem", "Peça", "Publicado", "Processo", "Reclamante",
-           "Reclamado", "Advogado", "Prioridade", "Complexidade", "Despacho",
+           "Reclamado", "Advogado", "Prioridade", "Cliente", "Despacho",
            "Resumo da Publicação"]
 
 
@@ -557,15 +580,21 @@ def gerar_relatorio_cruzamento(matches, cfg, data_disp, usar_ia):
 
     r = 2
     for m in matches:
+        rf = m["ref"]
+        cliente = rf.get("Cliente")
         cls = None
         if usar_ia:
-            cls = classificar_claude(m["texto"], cfg)
+            cls = classificar_claude(m["texto"], cfg, cliente)
         if cls is None:
-            cls = classificar_heuristica(m["texto"], feriados, publicado)
+            cls = classificar_heuristica(m["texto"], feriados, publicado, cliente)
 
         peca = cls["peca"]
         prazo = prazo_em_dias_uteis(publicado, cls["prazo_dias"], feriados) if cls.get("prazo_dias") else None
-        rf = m["ref"]
+        dest = (cls.get("destinatario") or "").strip()
+        if dest and sem_acento(dest).lower() != "nao identificado":
+            resumo_cel = f"Intimado(a): {dest}\n{cls['resumo']}"
+        else:
+            resumo_cel = cls["resumo"]
         desp_old = rf.get("Despacho")
         desp_old = "" if desp_old in (None, "None") else str(desp_old)
         if sem_acento(desp_old).strip().lower().startswith("acompanhamento"):
@@ -582,9 +611,9 @@ def gerar_relatorio_cruzamento(matches, cfg, data_disp, usar_ia):
         ws.cell(r, 7, rf.get("Reclamado"))
         ws.cell(r, 8, rf.get("Advogado"))
         ws.cell(r, 9, rf.get("Prioridade"))
-        ws.cell(r, 10, rf.get("Complexidade"))
+        ws.cell(r, 10, cliente)
         ws.cell(r, 11, despacho_final)
-        ws.cell(r, 12, cls["resumo"])
+        ws.cell(r, 12, resumo_cel)
 
         ws.cell(r, 1).number_format = "dd/mm/yy"
         ws.cell(r, 2).number_format = "ddd"
