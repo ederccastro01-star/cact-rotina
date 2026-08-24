@@ -219,12 +219,24 @@ def _extrai_campo(item, *chaves):
     return ""
 
 
+# Caracteres de controle que o Excel/openpyxl NÃO aceita em células.
+RE_ILEGAIS_XLSX = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def limpar_texto(v):
+    """Remove caracteres de controle inválidos que travariam a gravação no xlsx.
+    Preserva quebras de linha (\\n), tabulação (\\t) e o resto do conteúdo."""
+    if isinstance(v, str):
+        return RE_ILEGAIS_XLSX.sub("", v)
+    return v
+
+
 def _texto_item(item):
     txt = _extrai_campo(item, "texto", "teor", "conteudo", "textoComunicacao")
     txt = html.unescape(str(txt))
     txt = re.sub(r"<[^>]+>", " ", txt)            # remove HTML
     txt = re.sub(r"[ \t]+", " ", txt).strip()
-    return txt
+    return limpar_texto(txt)
 
 
 def _processo_item(item):
@@ -326,7 +338,7 @@ def carregar_de_arquivo(caminho):
         texto = html.unescape(str(row[1] or ""))
         texto = re.sub(r"<[^>]+>", " ", texto)
         texto = re.sub(r"[ \t]+", " ", texto).strip()
-        pubs.append({"processo": proc, "texto": texto, "item": {}})
+        pubs.append({"processo": proc, "texto": limpar_texto(texto), "item": {}})
     wb.close()
     log(f"Publicações lidas do arquivo: {len(pubs)}")
     return pubs
@@ -344,7 +356,7 @@ def salvar_relatorio_detalhado(pubs, cfg, data_disp):
     for c in ws[1]:
         c.font = Font(bold=True)
     for p in pubs:
-        ws.append([p["processo"], p["texto"]])
+        ws.append([limpar_texto(p["processo"]), limpar_texto(p["texto"])])
     ws.column_dimensions["A"].width = 28
     ws.column_dimensions["B"].width = 120
     wb.save(caminho)
@@ -604,16 +616,16 @@ def gerar_relatorio_cruzamento(matches, cfg, data_disp, usar_ia):
 
         ws.cell(r, 1, prazo)
         ws.cell(r, 2, prazo)
-        ws.cell(r, 3, peca)
+        ws.cell(r, 3, limpar_texto(peca))
         ws.cell(r, 4, publicado)
-        ws.cell(r, 5, m["processo"])
-        ws.cell(r, 6, rf.get("Reclamante"))
-        ws.cell(r, 7, rf.get("Reclamado"))
-        ws.cell(r, 8, rf.get("Advogado"))
-        ws.cell(r, 9, rf.get("Prioridade"))
-        ws.cell(r, 10, cliente)
-        ws.cell(r, 11, despacho_final)
-        ws.cell(r, 12, resumo_cel)
+        ws.cell(r, 5, limpar_texto(m["processo"]))
+        ws.cell(r, 6, limpar_texto(rf.get("Reclamante")))
+        ws.cell(r, 7, limpar_texto(rf.get("Reclamado")))
+        ws.cell(r, 8, limpar_texto(rf.get("Advogado")))
+        ws.cell(r, 9, limpar_texto(rf.get("Prioridade")))
+        ws.cell(r, 10, limpar_texto(cliente))
+        ws.cell(r, 11, limpar_texto(despacho_final))
+        ws.cell(r, 12, limpar_texto(resumo_cel))
 
         ws.cell(r, 1).number_format = "dd/mm/yy"
         ws.cell(r, 2).number_format = "ddd"
