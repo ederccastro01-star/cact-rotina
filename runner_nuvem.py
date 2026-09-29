@@ -11,6 +11,7 @@ Fluxo:
 Segredos (variáveis de ambiente — configurados no GitHub):
   ANTHROPIC_API_KEY, GRAPH_CLIENT_ID, GRAPH_REFRESH_TOKEN
   (opcional) ONEDRIVE_BASE para sobrepor a pasta base do config_nuvem.json
+  (opcional) CACT_DATA=DD.MM.AAAA para reprocessar um dia que falhou
 """
 
 import os
@@ -58,8 +59,12 @@ def main():
     base_cfg = carregar_config_nuvem()
     base = os.environ.get("ONEDRIVE_BASE", base_cfg["onedrive_base"]).strip("/")
 
-    # data de hoje no fuso de Brasília (UTC-3)
-    hoje = datetime.now(timezone(timedelta(hours=-3))).date()
+    # data de hoje no fuso de Brasília (UTC-3); CACT_DATA=DD.MM.AAAA reprocessa outro dia
+    forcada = os.environ.get("CACT_DATA", "").strip()
+    if forcada:
+        hoje = datetime.strptime(forcada, "%d.%m.%Y").date()
+    else:
+        hoje = datetime.now(timezone(timedelta(hours=-3))).date()
     cr.log(f"Iniciando rotina na nuvem — {hoje:%d/%m/%Y} (Brasília).")
 
     tok = od.get_access_token()

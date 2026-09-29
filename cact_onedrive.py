@@ -11,6 +11,9 @@ Variáveis de ambiente necessárias:
 """
 
 import os
+import time
+from datetime import datetime
+
 import requests
 
 GRAPH = "https://graph.microsoft.com/v1.0"
@@ -75,10 +78,34 @@ def _enc(rel_path):
     return rel_path.lstrip("/")
 
 
+# Erros que o OneDrive devolve de forma passageira. O 401 entra na lista porque o
+# /content redireciona ao armazenamento do SharePoint, que às vezes o devolve com
+# token válido (29/09/2026: falhou às 05h30 e o mesmo download passou às 08h43).
+_TRANSITORIOS = {401, 408, 423, 429, 500, 502, 503, 504}
+
+
+def _com_tentativas(chamada, ok, tentativas=4, espera=10):
+    """Repete chamada() enquanto o status for transitório ou a rede falhar,
+    esperando 10 s, 30 s e 90 s. Devolve a última resposta."""
+    for n in range(1, tentativas + 1):
+        try:
+            r = chamada()
+            if r.status_code in ok or r.status_code not in _TRANSITORIOS or n == tentativas:
+                return r
+            motivo = f"HTTP {r.status_code}"
+        except requests.RequestException as e:
+            if n == tentativas:
+                raise
+            motivo = type(e).__name__
+        print(f"[{datetime.now():%d/%m/%Y %H:%M:%S}]   ~ OneDrive: {motivo}; "
+              f"nova tentativa ({n}/{tentativas - 1})", flush=True)
+        time.sleep(espera * 3 ** (n - 1))
+
+
 def download(tok, rel_path):
     """Baixa um arquivo do OneDrive (caminho relativo à raiz). Retorna bytes."""
     url = f"{GRAPH}/me/drive/root:/{_enc(rel_path)}:/content"
-    r = requests.get(url, headers=_h(tok), timeout=180)
+    r = _com_tentativas(lambda: requests.get(url, headers=_h(tok), timeout=180), ok={200})
     if r.status_code != 200:
         raise RuntimeError(f"Falha ao baixar '{rel_path}' ({r.status_code}): {r.text[:200]}")
     return r.content
@@ -90,11 +117,11 @@ def upload(tok, rel_path, data):
     rel_path = _enc(rel_path)
     if len(data) <= 4 * 1024 * 1024:
         url = f"{GRAPH}/me/drive/root:/{rel_path}:/content"
-        r = requests.put(
+        r = _com_tentativas(lambda: requests.put(
             url,
             headers={**_h(tok), "Content-Type": "application/octet-stream"},
             data=data, timeout=300,
-        )
+        ), ok={200, 201})
         if r.status_code not in (200, 201):
             raise RuntimeError(f"Falha ao enviar '{rel_path}' ({r.status_code}): {r.text[:200]}")
         return r.json()

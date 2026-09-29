@@ -58,6 +58,28 @@ def log(msg):
     print(f"[{datetime.now():%d/%m/%Y %H:%M:%S}] {msg}", flush=True)
 
 
+# Erros HTTP passageiros (sobrecarga, instabilidade do servidor): vale tentar de novo.
+HTTP_TRANSITORIOS = {408, 425, 429, 500, 502, 503, 504, 529}
+
+
+def com_tentativas(chamada, descricao, tentativas=4, espera=5):
+    """Executa chamada() (que devolve um requests.Response) e a repete em erro
+    transitório ou falha de rede, esperando 5 s, 15 s e 45 s entre as tentativas.
+    Devolve a última resposta; relança a exceção se a rede falhar em todas."""
+    for n in range(1, tentativas + 1):
+        try:
+            r = chamada()
+            if r.status_code not in HTTP_TRANSITORIOS or n == tentativas:
+                return r
+            motivo = f"HTTP {r.status_code}"
+        except requests.RequestException as e:
+            if n == tentativas:
+                raise
+            motivo = type(e).__name__
+        log(f"  ~ {descricao}: {motivo}; nova tentativa ({n}/{tentativas - 1})")
+        time.sleep(espera * 3 ** (n - 1))
+
+
 def carregar_config():
     caminho = os.path.join(AQUI, "config.json")
     if not os.path.exists(caminho):
@@ -269,6 +291,7 @@ def buscar_djen(cfg, data_disp, cadastro, processos_extra):
     itens_por_pagina = cfg.get("itens_por_pagina", 100)
 
     coletados = {}     # chave de dedupe -> dict
+    falhas = []        # consultas que não se completaram nem após novas tentativas
     def adiciona(item):
         proc = _processo_item(item)
         texto = _texto_item(item)
@@ -286,13 +309,17 @@ def buscar_djen(cfg, data_disp, cadastro, processos_extra):
             p["pagina"] = pagina
             p["itensPorPagina"] = itens_por_pagina
             try:
-                r = requests.get(base, params=p, headers=headers, timeout=timeout)
+                r = com_tentativas(
+                    lambda: requests.get(base, params=p, headers=headers, timeout=timeout),
+                    descricao)
                 if r.status_code != 200:
                     log(f"  ! {descricao}: HTTP {r.status_code}")
+                    falhas.append(descricao)
                     return
                 dados = r.json()
             except Exception as e:
                 log(f"  ! {descricao}: erro {e}")
+                falhas.append(descricao)
                 return
             itens = dados.get("items") or dados.get("result") or dados.get("comunicacoes") or []
             for it in itens:
@@ -325,6 +352,9 @@ def buscar_djen(cfg, data_disp, cadastro, processos_extra):
         time.sleep(pausa)
 
     log(f"Publicações capturadas (após dedupe): {len(coletados)}")
+    if falhas:
+        log(f"ATENÇÃO: {len(falhas)} consulta(s) ao DJEN falharam mesmo após novas "
+            f"tentativas — pode faltar publicação: {'; '.join(falhas)}")
     return list(coletados.values())
 
 
@@ -547,7 +577,10 @@ def classificar_claude(texto, cfg, cliente=None):
         "messages": [{"role": "user", "content": entrada}],
     }
     try:
-        r = requests.post(url, headers=headers, json=corpo, timeout=cfg.get("timeout_segundos", 60))
+        r = com_tentativas(
+            lambda: requests.post(url, headers=headers, json=corpo,
+                                  timeout=cfg.get("timeout_segundos", 60)),
+            "Claude")
         if r.status_code != 200:
             log(f"  ! Claude HTTP {r.status_code}: {r.text[:160]}")
             return None
@@ -598,12 +631,15 @@ def gerar_relatorio_cruzamento(matches, cfg, data_disp, usar_ia):
     ed_fill = PatternFill("solid", fgColor="DDEBF7")
 
     r = 2
+    sem_ia = 0         # processos que a IA não classificou (caíram na heurística)
     for m in matches:
         rf = m["ref"]
         cliente = rf.get("Cliente")
         cls = None
         if usar_ia:
             cls = classificar_claude(m["texto"], cfg, cliente)
+            if cls is None:
+                sem_ia += 1
         if cls is None:
             cls = classificar_heuristica(m["texto"], feriados, publicado, cliente)
 
@@ -660,6 +696,9 @@ def gerar_relatorio_cruzamento(matches, cfg, data_disp, usar_ia):
     caminho = os.path.join(cfg["pasta_saida"], nome)
     wb.save(caminho)
     log(f"Relatório de cruzamento salvo: {nome}  ({r-2} processos)")
+    if sem_ia:
+        log(f"ATENÇÃO: {sem_ia} de {r-2} processo(s) classificados por heurística "
+            f"porque a API do Claude falhou.")
     return caminho
 
 
