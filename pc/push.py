@@ -94,6 +94,8 @@ def ler_push(caminho: str) -> list[dict]:
             ident = "PUSH:" + hashlib.sha1(f"{norm}|{data_ev}|{tipo}|{teor[:60]}".encode("utf-8")).hexdigest()[:12]
             out.append({"data": data_ev, "norm": norm, "processo": _mascara(row[2]), "tribunal": str(row[3] or ""), "tipo": tipo,
                         "teor": teor, "ident": ident,
+                        # Autor/Réu do e-mail do PJe: partes de processo que a Agenda ainda não conhece (encaminhamento de parceiro)
+                        "autor": str(row[10] or "").strip() if len(row) > 10 else "", "reu": str(row[11] or "").strip() if len(row) > 11 else "",
                         # pauta de julgamento/audiência não é intimação com prazo: fica só na conferência, para conhecimento
                         "intimacao": any(t in tipo.upper() for t in TIPOS_INTIMACAO) and "PAUTA" not in tipo.upper()})
     finally:
@@ -181,7 +183,8 @@ def _linha_lancamento(cfg: dict, e: dict, ref: dict, dia: date) -> dict[int, obj
     prazo = _dias_uteis(cfg, base, PRAZO_PADRAO, e.get("tribunal", ""))
     r = ref.get(e["norm"], {})
     teor = re.sub(r"\s+", " ", e.get("teor") or "")[:250]
-    return {1: prazo, 3: "Verificar intimação no PJe (Push)", 4: base, 5: e["processo"], 6: r.get("reclamante"), 7: r.get("reclamado"),
+    return {1: prazo, 3: "Verificar intimação no PJe (Push)", 4: base, 5: e["processo"],
+            6: r.get("reclamante") or e.get("autor") or None, 7: r.get("reclamado") or e.get("reu") or None,
             8: r.get("advogado"), 9: "NORMAL", 10: r.get("cliente"), 11: f"PUSH: {e.get('tipo')} · {teor}",
             COL_PARALELA["destino"]: "PRAZO DO ESCRITÓRIO", COL_PARALELA["motivo"]: MOTIVO_PUSH, 15: "?", 17: "PUSH (e-mail)",
             18: None, COL_PARALELA["ids"]: e["ident"], COL_PARALELA["prazo_calculado"]: prazo}

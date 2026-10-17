@@ -9,7 +9,7 @@ from paralela.planilha import Linha, gerar_paralela
 from pc import agenda_paralela as ap, push
 
 CAB = ["Data do andamento", "Data de autuação", "Nº do processo (CNJ)", "Tribunal", "Ramo da Justiça", "Grau", "Classe judicial",
-       "Órgão / Vara", "Tipo de andamento", "Andamento / Teor"]
+       "Órgão / Vara", "Tipo de andamento", "Andamento / Teor", "Autor", "Réu"]
 
 
 def _cfg_pc(cfg, tmp_path):
@@ -22,8 +22,10 @@ def _cfg_pc(cfg, tmp_path):
 def _push(cfg, dia, eventos):
     caminho = os.path.join(push.pasta_push(cfg), f"Relatorio_PUSH_{dia:%Y-%m-%d}_0900.xlsx")
     wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Publicações e Andamentos"; ws.append(CAB)
-    for data, proc, tipo, teor in eventos:
-        ws.append([data, None, proc, "TRT18", "Justiça do Trabalho", "1º Grau", None, "11ª VT", tipo, teor])
+    for ev in eventos:
+        data, proc, tipo, teor = ev[:4]
+        autor, reu = (ev[4], ev[5]) if len(ev) > 5 else (None, None)
+        ws.append([data, None, proc, "TRT18", "Justiça do Trabalho", "1º Grau", None, "11ª VT", tipo, teor, autor, reu])
     wb.create_sheet("Resumo").append(["Relatório de Publicações e Andamentos"]); wb.save(caminho)
     return caminho
 
@@ -131,3 +133,17 @@ def test_passo_vigia_chama_conferencia_push(cfg, tmp_path, monkeypatch):
     ap.passo_vigia(cfg, date(2026, 10, 16), datetime(2026, 10, 16, 9, 15), estado)
     ap.passo_vigia(cfg, date(2026, 10, 16), datetime(2026, 10, 16, 9, 30), estado)
     assert chamadas == [date(2026, 10, 16)]                                               # uma vez só
+
+
+def test_processo_desconhecido_na_agenda_usa_partes_do_email(cfg, tmp_path, monkeypatch):
+    """Encaminhamento de parceiro: processo que nunca entrou na Agenda chega em Lançamentos com Autor/Réu do e-mail do PJe."""
+    _cfg_pc(cfg, tmp_path); monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None); monkeypatch.setattr(push, "_livro_aberto_no_excel", lambda c: None)
+    _agenda(cfg, [])
+    par = ap.caminho_paralela(cfg, date(2026, 10, 16)); gerar_paralela([_linha("1", "0000001-11.2026.5.18.0001")], [], par, date(2026, 10, 16), {"ok": True})
+    c = _push(cfg, date(2026, 10, 16), [(datetime(2026, 10, 15, 23, 40), "0000777-77.2026.5.18.0007", "Intimação / Expedição de documento",
+                                          "Expedido(a) intimação a(o) JOSE MARIA", "JOSE MARIA DE SA", "COMPANHIA EXEMPLO - COMURG")])
+    assert push.ler_push(c)[0]["autor"] == "JOSE MARIA DE SA" and push.ler_push(c)[0]["reu"] == "COMPANHIA EXEMPLO - COMURG"
+    push.conferir_push(cfg, date(2026, 10, 16))
+    ws = openpyxl.load_workbook(par)["Lançamentos"]
+    nova = [r for r in ws.iter_rows(min_row=8, values_only=True) if r and r[4] == "0000777-77.2026.5.18.0007"][0]
+    assert nova[5] == "JOSE MARIA DE SA" and nova[6] == "COMPANHIA EXEMPLO - COMURG" and nova[9] is None      # J fica para o advogado
