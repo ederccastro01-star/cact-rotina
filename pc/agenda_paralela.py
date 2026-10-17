@@ -26,6 +26,7 @@ from pc.excel_com import (abrir_livro, coluna_valores, com, fechar_livro, get_ra
 from pc.transporte import (COL, COL_PARALELA, DECISOES_QUE_AGENDAM, MARCA_APLICADA, PRIMEIRA_LINHA, Razao, ids_da_agenda,
                            ler_paralela, linhas_para_desfazer, selecionar, valores_agenda)
 from pc.push import caminho_push, conferir_push  # noqa: F401 (monkeypatch nos testes)
+from pc.push_coletar import coletar  # noqa: F401 (monkeypatch nos testes)
 
 AQUI = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RE_DATA_ARQ = re.compile(r"CACT - Agenda Paralela (\d{2})-(\d{2})-(\d{4})( \(reprocessada [^)]*\))?\.xlsx$")
@@ -475,6 +476,7 @@ class Estado:
     mtime_visto: float = 0.0
     pendentes: list = field(default_factory=list)
     push_feito: bool = False
+    coleta_feita: bool = False
 
 
 def _hora(cfg: dict) -> tuple[int, int]:
@@ -494,6 +496,18 @@ def passo_vigia(cfg: dict, dia: date, agora: datetime, estado: Estado) -> None:
     # decisões antigas que ficaram sem transporte (vigia reiniciado, decisão depois das 23h, erro anterior)
     for c in paralelas_com_decisao_sem_lote(cfg, dia):
         _transportar_seguro(cfg, c)
+    # coleta do Push (spec §9c): uma vez por dia útil, independente da Paralela; Outlook indisponível → tenta no próximo passo
+    if not estado.coleta_feita and agora.weekday() < 5:
+        if caminho_push(cfg, dia):
+            estado.coleta_feita = True
+        else:
+            try:
+                info = coletar(cfg, dia, agora)
+                estado.coleta_feita = True
+                _log(f"coleta PUSH: {info.get('novos', 0)} e-mail(s) novo(s), {info.get('registros', 0)} registro(s)"
+                     + (f" → {os.path.basename(info['caminho'])}" if info.get("caminho") else " (sem relatório)"))
+            except Exception as e:  # noqa: BLE001
+                _log(f"ERRO na coleta PUSH (Outlook): {e}")
     caminho = caminho_paralela(cfg, dia)
     if not arquivo_pronto(caminho, agora.timestamp()):
         h, m = _hora(cfg)

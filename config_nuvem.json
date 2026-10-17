@@ -117,5 +117,24 @@
   },
   "tabela_publicacoes": "Tabela1",
   "tabela_prazos_feitos": "Tabela2",
-  "subpasta_push": "CACT - PUSH Diário"
+  "subpasta_push": "CACT - PUSH Diário",
+  "push": {
+    "_comentario": "spec §9c: coleta dos e-mails de Push no Outlook clássico do PC. Adicionar o Gmail ao Outlook para cobrir PJe Push/TRT-Push/Jusbrasil completo. arquivar_em: null = não mover; ex.: 'Tribunais/PUSH'.",
+    "fontes": [
+      {
+        "conta": "ederccastro01@gmail.com",
+        "pastas": [
+          "Caixa de Entrada"
+        ]
+      },
+      {
+        "conta": "ederccastro@hotmail.com",
+        "pastas": [
+          "Caixa de Entrada"
+        ]
+      }
+    ],
+    "janela_dias": 7,
+    "arquivar_em": null
+  }
 }
