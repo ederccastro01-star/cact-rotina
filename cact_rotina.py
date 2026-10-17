@@ -771,11 +771,11 @@ def executar_rotina(cfg, data_disp=None, fonte="djen", arquivo=None, sem_ia=Fals
             "Configure 'anthropic_api_key' para resumos por IA.")
 
     # 1) captura
-    if fonte == "arquivo":
+    if fonte in ("arquivo", "json"):
         if not arquivo:
-            log("ERRO: informe o arquivo no modo arquivo.")
+            log("ERRO: informe o arquivo no modo arquivo/json.")
             sys.exit(1)
-        pubs = carregar_de_arquivo(arquivo)
+        pubs = carregar_de_arquivo(arquivo) if fonte == "arquivo" else carregar_de_json(arquivo)
     else:
         cadastro = carregar_cadastro(cfg)
         processos_extra = cfg.get("processos_monitorados", [])
@@ -790,12 +790,20 @@ def executar_rotina(cfg, data_disp=None, fonte="djen", arquivo=None, sem_ia=Fals
     # 2) cruzamento
     ref = indexar_agenda(cfg)
     matches = cruzar(pubs, ref)
-    if not matches:
-        log("Nenhum processo de interesse cruzou hoje. Encerrando.")
-        return gerados
+    if matches:
+        # 3-4) classificação + relatório
+        gerados.append(gerar_relatorio_cruzamento(matches, cfg, data_disp, usar_ia))
+    else:
+        log("Nenhum processo de interesse cruzou hoje (sem Relatório de Cruzamento).")
 
-    # 3-4) classificação + relatório
-    gerados.append(gerar_relatorio_cruzamento(matches, cfg, data_disp, usar_ia))
+    # 5) Agenda Paralela (toda publicação do dia vira linha; nunca derruba o Cruzamento)
+    if cfg.get("gerar_paralela", True):
+        try:
+            from paralela.gerar import gerar_agenda_paralela
+            gerados.append(gerar_agenda_paralela(pubs, cfg, data_disp, usar_ia))
+        except Exception as e:  # noqa: BLE001
+            import traceback
+            log("ATENÇÃO: Agenda Paralela não gerada: " + str(e) + "\n" + traceback.format_exc())
     log("Rotina concluída com sucesso.")
     return gerados
 
@@ -803,8 +811,8 @@ def executar_rotina(cfg, data_disp=None, fonte="djen", arquivo=None, sem_ia=Fals
 def main():
     ap = argparse.ArgumentParser(description="CACT - Rotina de Publicações")
     ap.add_argument("--data", help="Data de disponibilização (DD.MM.AAAA). Padrão: hoje")
-    ap.add_argument("--fonte", choices=["djen", "arquivo"], default="djen")
-    ap.add_argument("--arquivo", help="Caminho do relatorio-detalhado (modo arquivo)")
+    ap.add_argument("--fonte", choices=["djen", "arquivo", "json"], default="djen")
+    ap.add_argument("--arquivo", help="Caminho do relatorio-detalhado (modo arquivo) ou do JSON de comunicações (modo json)")
     ap.add_argument("--sem-ia", action="store_true", help="Não usar a API do Claude")
     args = ap.parse_args()
 

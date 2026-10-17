@@ -103,6 +103,8 @@ def main():
         nome = os.path.basename(caminho)
         if nome.lower().startswith("relatorio-detalhado"):
             destino = f"{base}/{base_cfg['subpasta_historico']}/{nome}"
+        elif nome.startswith("CACT - Agenda Paralela"):
+            destino = f"{base}/{base_cfg.get('subpasta_paralela', 'CACT - Agenda Paralela')}/{nome}"
         else:
             destino = f"{base}/{nome}"
         with open(caminho, "rb") as fh:

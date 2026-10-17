@@ -107,5 +107,7 @@
     "26734/GO",
     "8060/GO"
   ],
-  "dispensas": []
+  "dispensas": [],
+  "subpasta_paralela": "CACT - Agenda Paralela",
+  "gerar_paralela": true
 }
