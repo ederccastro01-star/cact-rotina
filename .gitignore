@@ -5,3 +5,4 @@ __pycache__/
 tests/fixtures/reais/
 tests/_saida/
 pc/*.log
+pc/vigia.lock
