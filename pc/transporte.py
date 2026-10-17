@@ -42,9 +42,19 @@ class Razao:
 
 
 def _ids(valor) -> list[str]:
+    """IDs de uma célula. O Excel devolve célula numérica como float (759139484.0): normaliza para "759139484"."""
     if valor in (None, ""):
         return []
-    return [p.strip() for p in str(valor).replace(",", ";").split(";") if p.strip()]
+    if isinstance(valor, float) and valor.is_integer():
+        valor = str(int(valor))
+    out = []
+    for p in str(valor).replace(",", ";").split(";"):
+        p = p.strip()
+        if p.endswith(".0") and p[:-2].isdigit():
+            p = p[:-2]
+        if p:
+            out.append(p)
+    return out
 
 
 def ler_paralela(caminho: str) -> list[dict]:

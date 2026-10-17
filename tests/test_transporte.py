@@ -80,3 +80,9 @@ def test_ler_paralela_gerada():
     l = linhas[0]
     assert l["aba"] == "Lançamentos" and l["linha"] == 8 and len(l["a_k"]) == 11 and l["ids"] and l["decisao"] == "" and l["lote"] == ""
     assert all(x["aba"] in ("Lançamentos", "Pendentes") for x in linhas)
+
+
+def test_ids_normaliza_numero_do_excel():
+    # o Excel devolve a célula numérica como float: 759139484.0 tem de casar com "759139484"
+    assert tr.ids_da_agenda([759139484.0, "1;2", 3]) == {"759139484", "1", "2", "3"}
+    assert tr.linhas_para_desfazer(tr.Razao(quando="x", paralela="p", linhas=[{"ids": ["759139484"]}]), [None, 759139484.0]) == [9]

@@ -21,7 +21,7 @@ from datetime import date, datetime, timedelta
 
 import openpyxl
 
-from pc.excel_com import abrir_livro, coluna_valores, com, proxima_linha_tabela, set_cell  # noqa: F401 (monkeypatch nos testes)
+from pc.excel_com import abrir_livro, coluna_valores, com, fechar_livro, proxima_linha_tabela, set_cell, set_text  # noqa: F401 (monkeypatch nos testes)
 from pc.transporte import (COL, COL_PARALELA, PRIMEIRA_LINHA, Razao, ids_da_agenda, ler_paralela, linhas_para_desfazer,
                            selecionar, valores_agenda)
 
@@ -104,19 +104,9 @@ def arquivo_pronto(caminho: str, agora: float | None = None) -> bool:
 
 
 def _livro_aberto_no_excel(caminho: str):
-    """(xl, wb) se o arquivo está aberto na instância ativa do Excel; senão None."""
-    try:
-        import pythoncom
-        import win32com.client
-        pythoncom.CoInitialize()
-        xl = com(win32com.client.GetActiveObject, "Excel.Application")
-        nome = os.path.basename(caminho).lower()
-        for w in com(lambda: list(xl.Workbooks)):
-            if w.Name.lower() == nome:
-                return xl, w
-    except Exception:  # noqa: BLE001
-        return None
-    return None
+    """(xl, wb) se o arquivo está aberto na instância VISÍVEL do Excel (a do usuário); senão None."""
+    from pc.excel_com import _livro_na_instancia_ativa
+    return _livro_na_instancia_ativa(caminho)
 
 
 # ----------------------------------------------------------------------------- pendentes
@@ -224,7 +214,10 @@ def transportar(cfg: dict, caminho_paralela_: str, agenda: str) -> Razao | None:
             for c, v in sorted(valores.items()):
                 if v is None:
                     continue
-                set_cell(ws, r, c, v)
+                if c in (5, COL["id_djen"]):          # processo e ID DJEN sempre como texto
+                    set_text(ws, r, c, v)
+                else:
+                    set_cell(ws, r, c, v)
             set_cell(ws, r, 2, f'=IF(A{r}="","",A{r})')
             razao.linhas.append({"aba": ws_name(ws, cfg), "linha_agenda": r, "ids": l["ids"],
                                  "valores": {str(k): (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in valores.items()},
@@ -233,9 +226,8 @@ def transportar(cfg: dict, caminho_paralela_: str, agenda: str) -> Razao | None:
         com(wb.Save)
         _log(f"{len(sel)} linha(s) gravadas na Agenda; razão: {caminho_razao}")
     finally:
-        if fechar:
-            wb.Close(True)
-            xl.Quit()
+        ws = None                     # solta os proxies COM antes de fechar (o Excel só sai sem referências vivas)
+        fechar_livro(xl, wb, fechar)
     _marcar_lote_na_paralela(caminho_paralela_, sel, lote)
     avisar(f"{len(sel)} linha(s) gravadas na Agenda oficial")
     return razao
@@ -254,16 +246,15 @@ def desfazer(cfg: dict, razao_path: str) -> int:
     try:
         ws = com(wb.Worksheets, cfg.get("aba_publicacoes", "Publicações"))
         alvo = linhas_para_desfazer(razao, coluna_valores(ws, COL["id_djen"]))
-        tab = com(lambda: ws.ListObjects(cfg.get("tabela_publicacoes", "Tabela1")))
-        inicio = int(com(lambda: tab.DataBodyRange.Row))
+        # linha INTEIRA da planilha (a Tabela1 vai só até K; ListRows.Delete deixaria O–S com os IDs órfãos)
         for r in sorted(alvo, reverse=True):
-            com(lambda r=r: tab.ListRows(r - inicio + 1).Delete())
+            com(lambda r=r: ws.Rows(r).Delete())
         Razao(quando=datetime.now().isoformat(timespec="seconds"), paralela=razao.paralela, linhas=razao.linhas,
               tipo="desfazer").salvar(razao_path.replace(".json", "_desfeito.json"))
         com(wb.Save)
     finally:
-        if fechar:
-            wb.Close(True); xl.Quit()
+        ws = None                     # solta os proxies COM antes de fechar
+        fechar_livro(xl, wb, fechar)
     if os.path.exists(razao.paralela):
         _marcar_lote_na_paralela(razao.paralela, [{"aba": l.get("aba_paralela", "Lançamentos"), "linha": l["linha_paralela"]}
                                                   for l in razao.linhas], "")

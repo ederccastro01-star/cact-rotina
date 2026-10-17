@@ -128,6 +128,7 @@ def test_transportar_grava_razao_antes_do_save(cfg, tmp_path, monkeypatch):
     eventos, abrir, proxima, coluna = _fake_excel()
     monkeypatch.setattr(ap, "abrir_livro", abrir); monkeypatch.setattr(ap, "proxima_linha_tabela", proxima)
     monkeypatch.setattr(ap, "coluna_valores", coluna); monkeypatch.setattr(ap, "set_cell", lambda ws, r, c, v: setattr(ws.Cells(r, c), "Value", v))
+    monkeypatch.setattr(ap, "set_text", lambda ws, r, c, v: eventos.append(("set_text", r, c, v)))
     monkeypatch.setattr(ap, "avisar", lambda m: None); monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None)
     monkeypatch.setattr(ap, "_salvar_razao", lambda razao, cfg_: eventos.append(("razao_salvo", len(razao.linhas))) or "r.json")
     paralela = _paralela(cfg, date(2026, 10, 16), [_linha("1"), _linha("2")], decisoes={8: "Agendar", 9: "Descartar"})
@@ -136,7 +137,9 @@ def test_transportar_grava_razao_antes_do_save(cfg, tmp_path, monkeypatch):
     nomes = [e[0] for e in eventos]
     assert nomes.index("razao_salvo") < nomes.index("Save")
     gravados = {(e[1], e[2]): e[3] for e in eventos if e[0] == "set"}
-    assert gravados[(3231, 15)] == "1" and gravados[(3231, 17)] == "AUTO" and gravados[(3231, 5)] == "0000001-11.2026.5.18.0001"
+    textos = {(e[1], e[2]): e[3] for e in eventos if e[0] == "set_text"}
+    assert textos[(3231, 15)] == "1" and textos[(3231, 5)] == "0000001-11.2026.5.18.0001"   # ID e processo como TEXTO
+    assert gravados[(3231, 17)] == "AUTO"
     assert gravados[(3231, 2)] == '=IF(A3231="","",A3231)'
     assert (3231, 14) not in gravados
     ws = openpyxl.load_workbook(paralela)["Lançamentos"]
@@ -152,3 +155,32 @@ def test_transportar_segunda_vez_zero_linhas(cfg, tmp_path, monkeypatch):
     paralela = _paralela(cfg, date(2026, 10, 16), [_linha("1")], decisoes={8: "Agendar"})
     assert ap.transportar(cfg, paralela, str(tmp_path / "agenda.xlsx")) is None
     assert ("Save",) not in eventos
+
+
+def test_desfazer_apaga_linha_inteira(cfg, tmp_path, monkeypatch):
+    """ListRows.Delete só apaga A–K (a Tabela1 vai até K) e deixa O–S com os IDs: tem de apagar a linha da planilha."""
+    _cfg_pc(cfg, tmp_path)
+    eventos = []
+
+    class Linha_:
+        def __init__(self, r): self.r = r
+        def Delete(self): eventos.append(("Rows.Delete", self.r))
+
+    class Ws:
+        Name = "Publicações"
+        def Rows(self, r): return Linha_(r)
+        def ListObjects(self, nome): raise AssertionError("não usar ListRows.Delete no desfazer")
+
+    class Wb:
+        def Worksheets(self, nome): return Ws()
+        def Save(self): eventos.append(("Save",))
+
+    monkeypatch.setattr(ap, "abrir_livro", lambda c, visivel=False: (object(), Wb(), False))
+    monkeypatch.setattr(ap, "coluna_valores", lambda ws, col, primeira=8: [None, "111", None, "222"])   # linhas 9 e 11
+    monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None)
+    razao = ap.Razao(quando="x", paralela=str(tmp_path / "inexistente.xlsx"),
+                     linhas=[{"aba": "Publicações", "linha_agenda": 3228, "ids": ["111"], "valores": {}, "linha_paralela": 8},
+                             {"aba": "Publicações", "linha_agenda": 3229, "ids": ["222"], "valores": {}, "linha_paralela": 9}])
+    rz = tmp_path / "r.json"; razao.salvar(str(rz))
+    assert ap.desfazer(cfg, str(rz)) == 2
+    assert eventos == [("Rows.Delete", 11), ("Rows.Delete", 9), ("Save",)]      # de baixo para cima, depois salva
