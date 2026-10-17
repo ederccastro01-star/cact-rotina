@@ -147,3 +147,26 @@ def test_processo_desconhecido_na_agenda_usa_partes_do_email(cfg, tmp_path, monk
     ws = openpyxl.load_workbook(par)["Lançamentos"]
     nova = [r for r in ws.iter_rows(min_row=8, values_only=True) if r and r[4] == "0000777-77.2026.5.18.0007"][0]
     assert nova[5] == "JOSE MARIA DE SA" and nova[6] == "COMPANHIA EXEMPLO - COMURG" and nova[9] is None      # J fica para o advogado
+
+
+def test_sem_cobertura_colapsa_por_processo_e_dia_e_nao_duplica(cfg, tmp_path, monkeypatch):
+    """TRT-Push manda 'Publicado' e 'Disponibilizado' da mesma intimação e o relatório repete e-mails: uma linha CONFERIR
+    por processo e dia basta para o advogado conferir no PJe; repetir a conferência não cria linha nova."""
+    _cfg_pc(cfg, tmp_path); monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None); monkeypatch.setattr(push, "_livro_aberto_no_excel", lambda c: None)
+    _agenda(cfg, [])
+    par = ap.caminho_paralela(cfg, date(2026, 10, 16)); gerar_paralela([_linha("1", "0000001-11.2026.5.18.0001")], [], par, date(2026, 10, 16), {"ok": True})
+    _push(cfg, date(2026, 10, 16), [
+        (datetime(2026, 10, 15, 5, 49), "0000777-77.2026.5.18.0007", "Intimação / Publicação/Disponibilização", "Publicado(a) o(a) intimação em 15/10/2026"),
+        (datetime(2026, 10, 15, 5, 49), "0000777-77.2026.5.18.0007", "Intimação / Publicação/Disponibilização", "Disponibilizado(a) o(a) intimação no Diário"),
+        (datetime(2026, 10, 15, 5, 49), "0000777-77.2026.5.18.0007", "Intimação / Publicação/Disponibilização", "Publicado(a) o(a) intimação em 15/10/2026"),   # e-mail repetido
+        (datetime(2026, 10, 14, 9, 0), "0000777-77.2026.5.18.0007", "Intimação / Expedição de documento", "Expedido(a) intimação a(o) X"),                    # outro dia → outra linha
+    ])
+    r = push.conferir_push(cfg, date(2026, 10, 16))
+    assert sum(1 for e in r if e["situacao"] == "SEM COBERTURA") == 4                       # a aba de conferência continua por evento
+    for _ in range(2):                                                                      # segunda rodada: idempotente
+        ws = openpyxl.load_workbook(par)["Lançamentos"]
+        novas = [x for x in ws.iter_rows(min_row=8, values_only=True) if x and x[4] == "0000777-77.2026.5.18.0007"]
+        assert len(novas) == 2
+        linha15 = [n for n in novas if n[3].date() == date(2026, 10, 15)][0]
+        assert "+2 outro" in linha15[10] and linha15[21].startswith("PUSH:")
+        push.conferir_push(cfg, date(2026, 10, 16))

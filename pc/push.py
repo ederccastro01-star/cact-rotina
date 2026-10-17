@@ -177,14 +177,24 @@ def _livro_aberto_no_excel(caminho: str):
     return _livro_na_instancia_ativa(caminho)
 
 
-def _linha_lancamento(cfg: dict, e: dict, ref: dict, dia: date) -> dict[int, object]:
+def _agrupar_sem_cobertura(eventos: list[dict]) -> list[list[dict]]:
+    """Uma linha CONFERIR por processo e dia: o TRT-Push manda 'Publicado' e 'Disponibilizado' da mesma intimação e o
+    relatório repete e-mails; o advogado confere o PJe uma vez só. Ordem de chegada preservada."""
+    grupos: dict[tuple, list[dict]] = {}
+    for e in eventos:
+        grupos.setdefault((e["norm"], e.get("data")), []).append(e)
+    return list(grupos.values())
+
+
+def _linha_lancamento(cfg: dict, e: dict, ref: dict, dia: date, outros: int = 0) -> dict[int, object]:
     base = e.get("data") or dia
     prazo = _dias_uteis(cfg, base, PRAZO_PADRAO, e.get("tribunal", ""))
     r = ref.get(e["norm"], {})
     teor = re.sub(r"\s+", " ", e.get("teor") or "")[:250]
+    despacho = f"PUSH: {e.get('tipo')} · {teor}" + (f" (+{outros} outro(s) evento(s) do Push no mesmo dia)" if outros else "")
     return {1: prazo, 3: "Verificar intimação no PJe (Push)", 4: base, 5: e["processo"],
             6: r.get("reclamante") or e.get("autor") or None, 7: r.get("reclamado") or e.get("reu") or None,
-            8: r.get("advogado"), 9: "NORMAL", 10: r.get("cliente"), 11: f"PUSH: {e.get('tipo')} · {teor}",
+            8: r.get("advogado"), 9: "NORMAL", 10: r.get("cliente"), 11: despacho,
             COL_PARALELA["destino"]: "PRAZO DO ESCRITÓRIO", COL_PARALELA["motivo"]: MOTIVO_PUSH, 15: "?", 17: "PUSH (e-mail)",
             18: None, COL_PARALELA["ids"]: e["ident"], COL_PARALELA["prazo_calculado"]: prazo}
 
@@ -295,12 +305,13 @@ def conferir_push(cfg: dict, dia: date) -> list[dict]:
         ultima = int(com(lambda: ws_l.Cells(ws_l.Rows.Count, 5).End(-4162).Row))
         existentes = {str(com(lambda r=r: ws_l.Cells(r, COL_PARALELA["ids"]).Value) or "") for r in range(PRIMEIRA_LINHA, ultima + 1)}
         novas = 0
-        for e in sem_cobertura:
-            if e["ident"] in existentes:
+        for grupo in _agrupar_sem_cobertura(sem_cobertura):
+            if any(x["ident"] in existentes for x in grupo):
                 continue
+            e = grupo[0]
             r = ultima + 1
             com(lambda r=r: ws_l.Rows(r).Insert())
-            for c, v in _linha_lancamento(cfg, e, ref, dia).items():
+            for c, v in _linha_lancamento(cfg, e, ref, dia, outros=len(grupo) - 1).items():
                 if v is None:
                     continue
                 if c in (5, COL_PARALELA["ids"]):
@@ -308,6 +319,7 @@ def conferir_push(cfg: dict, dia: date) -> list[dict]:
                 else:
                     com(set_cell, ws_l, r, c, v if not isinstance(v, date) else datetime(v.year, v.month, v.day))
             com(set_cell, ws_l, r, 2, f'=IF(A{r}="","",A{r})')
+            existentes.update(x["ident"] for x in grupo)
             ultima += 1; novas += 1
         com(wb.Save)
     else:
@@ -316,10 +328,11 @@ def conferir_push(cfg: dict, dia: date) -> list[dict]:
         ws_l = wb["Lançamentos"]
         existentes = _ids_existentes(ws_l)
         novas = 0
-        for e in sem_cobertura:
-            if e["ident"] in existentes:
+        for grupo in _agrupar_sem_cobertura(sem_cobertura):
+            if any(x["ident"] in existentes for x in grupo):
                 continue
-            _inserir_linha_openpyxl(ws_l, _linha_lancamento(cfg, e, ref, dia)); novas += 1
+            _inserir_linha_openpyxl(ws_l, _linha_lancamento(cfg, grupo[0], ref, dia, outros=len(grupo) - 1)); novas += 1
+            existentes.update(x["ident"] for x in grupo)
         wb.save(paralela_hoje)
     _log(f"Conferência PUSH {dia:%d/%m}: {len(eventos)} eventos, {sum(1 for e in classificados if e['intimacao'])} intimações, "
          f"{len(sem_cobertura)} sem cobertura, {novas} linha(s) nova(s) em Lançamentos")
