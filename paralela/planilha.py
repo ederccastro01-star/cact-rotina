@@ -16,9 +16,10 @@ COLUNAS_AGENDA = ["Prazo", "Dia/Sem", "Peça", "Publicado", "Processo ", "Reclam
                   "Prioridade ", "Cliente", "Despacho"]
 COLUNAS_CONTROLE = ["Destino", "Decisão", "Motivo CONFERIR", "Polo intimado", "Intimado(s)", "Fonte do polo",
                     "Prazo no texto", "Prazo legal", "Base legal", "Link (teor)", "ID DJEN", "Lote", "Observações",
-                    "Prazo calculado"]
-LARGURAS = [10.9, 10.1, 24, 11.4, 26, 30, 34, 26, 12.4, 12, 60, 20, 18, 38, 12, 34, 16, 10, 10, 13, 40, 22, 22, 30, 12]
+                    "Prazo calculado", "Corrigir J para"]
+LARGURAS = [10.9, 10.1, 24, 11.4, 26, 30, 34, 26, 12.4, 12, 60, 20, 18, 38, 12, 34, 16, 10, 10, 13, 40, 22, 22, 30, 12, 14]
 DECISOES = '"Agendar,Descartar,Corrigir e agendar"'
+OPCOES_J = '"AUTOR(A),RÉU"'
 ORDEM_DESTINO = {"PROCESSO NOVO": 0, "PRAZO DO ESCRITÓRIO": 2, "DISPENSADA": 4, "PARTE CONTRÁRIA": 3, "FORA DA AGENDA": 5}
 
 ARIAL = Font(name="Arial", size=10)
@@ -119,7 +120,8 @@ def _escrever(ws, row: int, l: Linha):
     fill = PatternFill("solid", fgColor=cor)
     vals = [l.prazo, None, l.peca, l.publicado, l.processo, l.reclamante, l.reclamado, l.advogado, l.prioridade, l.cliente,
             l.despacho, l.destino, None, l.motivo, l.polo_intimado, l.intimados, l.fonte_polo, l.prazo_texto, l.prazo_legal,
-            l.base_legal, l.link, l.ids, l.lote, l.observacoes, l.prazo]       # Y = prazo calculado (fica mesmo se A for corrigida)
+            l.base_legal, l.link, l.ids, l.lote, l.observacoes, l.prazo,       # Y = prazo calculado (fica mesmo se A for corrigida)
+            None]                                                              # Z = Corrigir J para (o advogado preenche)
     for i, v in enumerate(vals, start=1):
         if isinstance(v, str):
             v = limpar_texto(v)
@@ -136,6 +138,7 @@ def _escrever(ws, row: int, l: Linha):
             c.hyperlink = v; c.value = "abrir teor"
             c.font = Font(name="Arial", size=9, color="0563C1", underline="single")
     ws.cell(row=row, column=13).fill = AMARELO
+    ws.cell(row=row, column=26).fill = AMARELO
     ws.row_dimensions[row].height = 54
 
 
@@ -150,6 +153,9 @@ def _aba(wb, titulo, subtitulo, nome, linhas: list[Linha], ordenar=True):
         dv.prompt = ("Agendar: o script grava na Agenda oficial. Descartar: só registro. "
                      "Corrigir e agendar: corrija A, C ou K nesta linha antes.")
         ws.add_data_validation(dv); dv.add(f"M8:M{row - 1}")
+        dvj = DataValidation(type="list", formula1=OPCOES_J, allow_blank=True)
+        dvj.prompt = "Lado que o escritório representa neste processo. O transporte corrige a coluna J em todas as linhas do processo na Agenda e marca 'Polo conferido'."
+        ws.add_data_validation(dvj); dvj.add(f"Z8:Z{row - 1}")
     return ws, row
 
 

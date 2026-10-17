@@ -23,8 +23,8 @@ import openpyxl
 
 from pc.excel_com import (abrir_livro, coluna_valores, com, fechar_livro, get_range,  # noqa: F401 (monkeypatch nos testes)
                           proxima_linha_tabela, set_cell, set_text)
-from pc.transporte import (COL, COL_PARALELA, DECISOES_QUE_AGENDAM, PRIMEIRA_LINHA, Razao, ids_da_agenda, ler_paralela,
-                           linhas_para_desfazer, selecionar, valores_agenda)
+from pc.transporte import (COL, COL_PARALELA, DECISOES_QUE_AGENDAM, MARCA_APLICADA, PRIMEIRA_LINHA, Razao, ids_da_agenda,
+                           ler_paralela, linhas_para_desfazer, selecionar, valores_agenda)
 
 AQUI = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RE_DATA_ARQ = re.compile(r"CACT - Agenda Paralela (\d{2})-(\d{2})-(\d{4})( \(reprocessada [^)]*\))?\.xlsx$")
@@ -289,25 +289,71 @@ def ids_ja_lancados(cfg: dict, coluna_fn) -> set[str]:
     return ids
 
 
-def _marcar_lote_na_paralela(caminho: str, linhas: list[dict], lote: str) -> None:
+def _marcar_celulas_na_paralela(caminho: str, celulas: list[tuple[str, int, int, object]]) -> None:
+    """Grava (aba, linha, coluna, valor) na Paralela: pela instância do Excel se estiver aberta, senão por openpyxl."""
+    if not celulas:
+        return
     aberto = _livro_aberto_no_excel(caminho)
     if aberto:
         _, wb = aberto
-        for l in linhas:
-            ws = com(wb.Worksheets, l["aba"])
-            com(set_cell, ws, l["linha"], COL_PARALELA["lote"], lote)
+        for aba, r, c, v in celulas:
+            com(set_cell, com(wb.Worksheets, aba), r, c, v)
         com(wb.Save)
         return
     wb = openpyxl.load_workbook(caminho)
-    for l in linhas:
-        wb[l["aba"]].cell(l["linha"], COL_PARALELA["lote"], lote)
+    for aba, r, c, v in celulas:
+        wb[aba].cell(r, c, v)
     wb.save(caminho)
+
+
+def _marcar_lote_na_paralela(caminho: str, linhas: list[dict], lote: str) -> None:
+    _marcar_celulas_na_paralela(caminho, [(l["aba"], l["linha"], COL_PARALELA["lote"], lote) for l in linhas])
+
+
+def _norm_proc(v) -> str:
+    return re.sub(r"\D", "", str(v or ""))
+
+
+def aplicar_correcoes_j(wb, cfg: dict, correcoes: dict[str, str], razao: Razao) -> int:
+    """Para cada processo (20 dígitos) → J nova: grava J em TODAS as linhas do processo nas abas Publicações e
+    Prazos Feitos e 'Polo conferido' = 'ADVOGADO dd/mm/aaaa'; registra cada célula no razão (tipo 'j')."""
+    if not correcoes:
+        return 0
+    marca = f"ADVOGADO {date.today():%d/%m/%Y}"
+    n = 0
+    for aba in ABAS_IDS:
+        try:
+            ws = com(wb.Worksheets, aba)
+        except Exception as e:  # noqa: BLE001
+            _log(f"correção de J: aba {aba} indisponível: {e}")
+            continue
+        procs = coluna_valores(ws, 5)
+        js = coluna_valores(ws, 10)
+        confs = coluna_valores(ws, COL["polo_conferido"])
+        for i, p in enumerate(procs):
+            novo = correcoes.get(_norm_proc(p))
+            if not novo:
+                continue
+            r = PRIMEIRA_LINHA + i
+            j_antes = js[i] if i < len(js) else None
+            conf_antes = confs[i] if i < len(confs) else None
+            if str(j_antes or "").strip() == novo and conf_antes:
+                continue
+            com(set_cell, ws, r, 10, novo)
+            com(set_cell, ws, r, COL["polo_conferido"], marca)
+            razao.linhas.append({"tipo": "j", "aba": aba, "linha_agenda": r, "processo": _norm_proc(p),
+                                 "j_antes": j_antes, "j_depois": novo, "conf_antes": conf_antes})
+            n += 1
+        ws = None
+    return n
 
 
 def transportar(cfg: dict, caminho_paralela_: str, agenda: str) -> Razao | None:
     """Grava na Agenda oficial as linhas com decisão Agendar / Corrigir e agendar.
     Razão 'em andamento' gravado ANTES da primeira escrita; toda chamada COM passa por com()."""
     linhas = ler_paralela(caminho_paralela_)
+    correcoes = {_norm_proc(l["a_k"][4]): l["corrigir_j"] for l in linhas if l.get("corrigir_j")}
+    linhas_corrigidas = [l for l in linhas if l.get("corrigir_j")]
     livro = abrir_livro(agenda)
     sel: list[dict] = []
     lote = ""
@@ -317,9 +363,13 @@ def transportar(cfg: dict, caminho_paralela_: str, agenda: str) -> Razao | None:
         sel, avisos = selecionar(linhas, ids_agenda)
         for a in avisos:
             _log(a)
-        if not sel:
+        if not sel and not correcoes:
             _log("nada a transportar")
             return None
+        for l in sel:                                     # linha nova já sai com a J corrigida
+            novo = correcoes.get(_norm_proc(l["a_k"][4]))
+            if novo:
+                l["a_k"][9] = novo
         garantir_colunas_controle(ws, cfg, tabela=cfg.get("tabela_publicacoes", "Tabela1"))
         try:   # Prazos Feitos também tem "Polo conferido" (N) fora da Tabela2: estende para não descolar ao ordenar
             ws_pf = com(livro.wb.Worksheets, cfg.get("aba_prazos_feitos", "Prazos Feitos"))
@@ -332,6 +382,9 @@ def transportar(cfg: dict, caminho_paralela_: str, agenda: str) -> Razao | None:
                       linhas=[{"aba": cfg.get("aba_publicacoes", "Publicações"), "linha_agenda": None, "ids": l["ids"],
                                "valores": {}, "linha_paralela": l["linha"], "aba_paralela": l["aba"]} for l in sel])
         _salvar_razao(razao, cfg)
+        n_corr = aplicar_correcoes_j(livro.wb, cfg, correcoes, razao)
+        if n_corr:
+            _log(f"coluna J corrigida em {n_corr} linha(s) da Agenda ({len(correcoes)} processo(s))")
         for i, l in enumerate(sel):
             r = proxima_linha_tabela(ws, cfg.get("tabela_publicacoes", "Tabela1"))
             valores = valores_agenda(l, lote)
@@ -355,8 +408,17 @@ def transportar(cfg: dict, caminho_paralela_: str, agenda: str) -> Razao | None:
     finally:
         ws = None                     # solta os proxies COM antes de fechar (o Excel só sai sem referências vivas)
         fechar_livro(livro)
-    _marcar_lote_na_paralela(caminho_paralela_, sel, lote)
-    avisar(f"{len(sel)} linha(s) gravadas na Agenda oficial")
+    agora = f"{datetime.now():%d/%m %H:%M}"
+    _marcar_celulas_na_paralela(caminho_paralela_,
+                                [(l["aba"], l["linha"], COL_PARALELA["lote"], lote) for l in sel] +
+                                [(l["aba"], l["linha"], COL_PARALELA["corrigir_j"], f"{MARCA_APLICADA} {l['corrigir_j']} ({agora})")
+                                 for l in linhas_corrigidas])
+    partes = []
+    if sel:
+        partes.append(f"{len(sel)} linha(s) gravadas na Agenda oficial")
+    if correcoes:
+        partes.append(f"J corrigida em {len(correcoes)} processo(s)")
+    avisar("; ".join(partes))
     return razao
 
 
@@ -365,8 +427,16 @@ def desfazer(cfg: dict, razao_path: str) -> int:
     livro = abrir_livro(caminho_agenda(cfg))
     try:
         ws = com(livro.wb.Worksheets, cfg.get("aba_publicacoes", "Publicações"))
+        # 1) correções de J: restaurar J e Polo conferido (antes de apagar linhas, para os números de linha valerem)
+        for l in razao.linhas:
+            if l.get("tipo") != "j":
+                continue
+            ws_j = com(livro.wb.Worksheets, l["aba"])
+            com(set_cell, ws_j, l["linha_agenda"], 10, l.get("j_antes"))
+            com(set_cell, ws_j, l["linha_agenda"], COL["polo_conferido"], l.get("conf_antes"))
+            ws_j = None
+        # 2) linhas transportadas: linha INTEIRA da planilha (apagar só a linha da tabela deixaria colunas fora dela com IDs órfãos)
         alvo = linhas_para_desfazer(razao, coluna_valores(ws, COL["id_djen"]))
-        # linha INTEIRA da planilha (apagar só a linha da tabela deixaria colunas fora dela com IDs órfãos)
         for r in sorted(alvo, reverse=True):
             com(lambda r=r: ws.Rows(r).Delete())
         Razao(quando=datetime.now().isoformat(timespec="seconds"), paralela=razao.paralela, linhas=razao.linhas,
@@ -380,7 +450,7 @@ def desfazer(cfg: dict, razao_path: str) -> int:
     razao.salvar(razao_path)
     if os.path.exists(razao.paralela):
         _marcar_lote_na_paralela(razao.paralela, [{"aba": l.get("aba_paralela", "Lançamentos"), "linha": l["linha_paralela"]}
-                                                  for l in razao.linhas], "")
+                                                  for l in razao.linhas if l.get("tipo") != "j" and l.get("linha_paralela")], "")
     _log(f"desfeitas {len(alvo)} linha(s) do lote {razao.quando}")
     return len(alvo)
 

@@ -17,7 +17,7 @@ def _linha(decisao, ids, lote="", linha=8, aba="Lançamentos"):
 
 def test_colunas():
     assert tr.COL == {"polo_conferido": 14, "id_djen": 15, "link": 16, "origem": 17, "lote": 18, "conferir": 19}
-    assert tr.COL_PARALELA == {"destino": 12, "decisao": 13, "motivo": 14, "link": 21, "ids": 22, "lote": 23, "obs": 24, "prazo_calculado": 25}
+    assert tr.COL_PARALELA == {"destino": 12, "decisao": 13, "motivo": 14, "link": 21, "ids": 22, "lote": 23, "obs": 24, "prazo_calculado": 25, "corrigir_j": 26}
 
 
 def test_selecionar_so_decisoes_de_agendar():

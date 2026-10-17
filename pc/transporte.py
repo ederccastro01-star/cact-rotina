@@ -16,7 +16,9 @@ import openpyxl
 # colunas da Agenda oficial (spec, Global Constraints): N já existe (Polo conferido); O–S são novas
 COL = {"polo_conferido": 14, "id_djen": 15, "link": 16, "origem": 17, "lote": 18, "conferir": 19}
 # colunas da Paralela (paralela.planilha: A–K + L..X)
-COL_PARALELA = {"destino": 12, "decisao": 13, "motivo": 14, "link": 21, "ids": 22, "lote": 23, "obs": 24, "prazo_calculado": 25}
+COL_PARALELA = {"destino": 12, "decisao": 13, "motivo": 14, "link": 21, "ids": 22, "lote": 23, "obs": 24, "prazo_calculado": 25,
+                "corrigir_j": 26}
+MARCA_APLICADA = "✔"
 DECISOES_QUE_AGENDAM = {"agendar", "corrigir e agendar"}
 ABAS_LIDAS = ("Lançamentos", "Pendentes")
 PRIMEIRA_LINHA = 8
@@ -39,6 +41,17 @@ class Razao:
         with open(caminho, encoding="utf-8") as fh:
             d = json.load(fh)
         return cls(**d)
+
+
+def normalizar_j(valor) -> str | None:
+    """'réu', 'Ré', 'RÉU' → 'RÉU'; 'autor', 'AUTOR(A)', 'autora' → 'AUTOR(A)'; outro → None."""
+    import unicodedata
+    v = unicodedata.normalize("NFKD", str(valor or "")).encode("ascii", "ignore").decode().strip().upper()
+    if v.startswith("AUTOR"):
+        return "AUTOR(A)"
+    if v in ("RE", "REU", "RES", "REUS") or v.startswith("REU") or v.startswith("RE "):
+        return "RÉU"
+    return None
 
 
 def _ids(valor) -> list[str]:
@@ -81,6 +94,8 @@ def ler_paralela(caminho: str) -> list[dict]:
                     "destino": str(g(COL_PARALELA["destino"]) or ""),
                     "origem": str(g(COL_PARALELA["obs"]) or "").strip(),
                     "prazo_calculado": g(COL_PARALELA["prazo_calculado"]),
+                    "corrigir_j": None if str(g(COL_PARALELA["corrigir_j"]) or "").startswith(MARCA_APLICADA) else normalizar_j(g(COL_PARALELA["corrigir_j"])),
+                    "j_corrigida": str(g(COL_PARALELA["corrigir_j"]) or "").startswith(MARCA_APLICADA),
                 })
     finally:
         wb.close()

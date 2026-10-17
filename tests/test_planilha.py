@@ -28,8 +28,8 @@ def test_gerar_paralela_layout(tmp_path):
     assert ws["E8"].font.name == "Courier New"
     assert ws["A8"].number_format == "dd/mm/yy;@"
     dv = ws.data_validations.dataValidation
-    assert len(dv) == 1 and dv[0].formula1 == '"Agendar,Descartar,Corrigir e agendar"'
-    assert "M8:M9" in str(dv[0].sqref)
+    assert len(dv) == 2 and dv[0].formula1 == '"Agendar,Descartar,Corrigir e agendar"'
+    assert "M8:M9" in str(dv[0].sqref) and dv[1].formula1 == '"AUTOR(A),RÉU"' and "Z8:Z9" in str(dv[1].sqref)
     assert ws["M8"].fill.fgColor.rgb.endswith("FFFF00")
     assert ws["V8"].value == "1;2"
     assert ws.freeze_panes == "F8"
