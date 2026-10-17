@@ -25,6 +25,7 @@ from pc.excel_com import (abrir_livro, coluna_valores, com, fechar_livro, get_ra
                           proxima_linha_tabela, set_cell, set_text)
 from pc.transporte import (COL, COL_PARALELA, DECISOES_QUE_AGENDAM, MARCA_APLICADA, PRIMEIRA_LINHA, Razao, ids_da_agenda,
                            ler_paralela, linhas_para_desfazer, selecionar, valores_agenda)
+from pc.push import caminho_push, conferir_push  # noqa: F401 (monkeypatch nos testes)
 
 AQUI = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RE_DATA_ARQ = re.compile(r"CACT - Agenda Paralela (\d{2})-(\d{2})-(\d{4})( \(reprocessada [^)]*\))?\.xlsx$")
@@ -473,6 +474,7 @@ class Estado:
     abriu: bool = False
     mtime_visto: float = 0.0
     pendentes: list = field(default_factory=list)
+    push_feito: bool = False
 
 
 def _hora(cfg: dict) -> tuple[int, int]:
@@ -505,6 +507,17 @@ def passo_vigia(cfg: dict, dia: date, agora: datetime, estado: Estado) -> None:
         estado.abriu = True
         estado.mtime_visto = os.stat(caminho).st_mtime
         return
+    # conferência PUSH: uma vez por dia, quando o relatório das 9h (Gmail) chegar ao OneDrive
+    if not estado.push_feito and caminho_push(cfg, dia):
+        try:
+            classificados = conferir_push(cfg, dia)
+            estado.push_feito = True
+            sem = sum(1 for e in classificados if e.get("situacao") == "SEM COBERTURA")
+            if sem:
+                avisar(f"Conferência PUSH: {sem} intimação(ões) sem publicação no DJEN entraram em Lançamentos (CONFERIR)")
+            estado.mtime_visto = os.stat(caminho).st_mtime     # a gravação da conferência não é decisão do advogado
+        except Exception as e:  # noqa: BLE001
+            _log(f"ERRO na conferência PUSH: {e}")
     mtime = os.stat(caminho).st_mtime
     if mtime > estado.mtime_visto + 1:
         estado.mtime_visto = mtime

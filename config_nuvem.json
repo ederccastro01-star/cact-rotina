@@ -116,5 +116,6 @@
     "intervalo_min": 15
   },
   "tabela_publicacoes": "Tabela1",
-  "tabela_prazos_feitos": "Tabela2"
+  "tabela_prazos_feitos": "Tabela2",
+  "subpasta_push": "CACT - PUSH Diário"
 }
