@@ -6,7 +6,7 @@ import openpyxl
 import pytest
 
 from paralela.planilha import Linha, gerar_paralela
-from pc import agenda_paralela as ap
+from pc import agenda_paralela as ap, excel_com
 
 
 def _cfg_pc(cfg, tmp_path):
@@ -112,7 +112,7 @@ def _fake_excel(ids_col_o=()):
     ws = _Ws(eventos, ids_col_o)
 
     def abrir(caminho, visivel=False):
-        return object(), _Wb(ws), False
+        return excel_com.Livro(object(), _Wb(ws), False, caminho)
 
     def proxima(ws_, nome="Tabela1"):
         ws_.proxima += 1; return ws_.proxima
@@ -176,7 +176,7 @@ def test_desfazer_apaga_linha_inteira(cfg, tmp_path, monkeypatch):
         def Worksheets(self, nome): return Ws()
         def Save(self): eventos.append(("Save",))
 
-    monkeypatch.setattr(ap, "abrir_livro", lambda c, visivel=False: (object(), Wb(), False))
+    monkeypatch.setattr(ap, "abrir_livro", lambda c, visivel=False: excel_com.Livro(object(), Wb(), False, c))
     monkeypatch.setattr(ap, "coluna_valores", lambda ws, col, primeira=8: [None, "111", None, "222"])   # linhas 9 e 11
     monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None)
     razao = ap.Razao(quando="x", paralela=str(tmp_path / "inexistente.xlsx"),

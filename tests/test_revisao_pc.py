@@ -111,7 +111,7 @@ def _fakes(monkeypatch, eventos, ws, rejeitar_vezes=0):
         ws_.Cells(r, c).Value = v
 
     monkeypatch.setattr(excel_com.time, "sleep", lambda s: None)
-    monkeypatch.setattr(ap, "abrir_livro", lambda c, visivel=False: (object(), _Wb(ws), False))
+    monkeypatch.setattr(ap, "abrir_livro", lambda c, visivel=False: excel_com.Livro(object(), _Wb(ws), False, c))
     monkeypatch.setattr(ap, "proxima_linha_tabela", lambda ws_, nome="Tabela1": (setattr(ws_, "proxima", ws_.proxima + 1), ws_.proxima)[1])
     monkeypatch.setattr(ap, "coluna_valores", lambda ws_, col, primeira=8: [])
     monkeypatch.setattr(ap, "set_cell", set_cell); monkeypatch.setattr(ap, "set_text", set_cell)
@@ -165,12 +165,14 @@ def test_garantir_colunas_controle_redimensiona_tabela_e_poe_cabecalhos():
                 @Value.setter
                 def Value(s, v): ws.dados[(r, c)] = v; eventos.append(("hdr", r, c, v))
                 Font = type("F", (), {"Bold": False})()
+            C.r, C.c = r, c
             return C()
-        def Range(self, a, b): return Rng()
 
     ws = Ws()
+    pedidos = []
+    ws.Range = lambda a, b: pedidos.append((a.r, a.c, b.r, b.c)) or "novo"
     ap.garantir_colunas_controle(ws, {"tabela_publicacoes": "Tabela1"}, vazias=lambda ws_, c1, c2: True)
-    assert ("ResizeTab", "novo") in eventos and ("Resize", 3221, 19) in eventos
+    assert ("ResizeTab", "novo") in eventos and pedidos == [(7, 1, 3227, 19)]      # A7:S3227, alinhado ao cabeçalho
     assert ws.dados[(7, 15)] == "ID DJEN" and ws.dados[(7, 19)] == "CONFERIR" and ws.dados[(7, 14)] == "Polo conferido"
 
 
@@ -254,3 +256,40 @@ def test_nome_destino_paralela_com_sufixo_quando_ja_existe():
     import runner_nuvem as rn
     assert rn.nome_destino_paralela("CACT - Agenda Paralela 16-10-2026.xlsx", existe=False, agora=datetime(2026, 10, 16, 16, 5)) == "CACT - Agenda Paralela 16-10-2026.xlsx"
     assert rn.nome_destino_paralela("CACT - Agenda Paralela 16-10-2026.xlsx", existe=True, agora=datetime(2026, 10, 16, 16, 5)) == "CACT - Agenda Paralela 16-10-2026 (reprocessada 16h05).xlsx"
+
+
+def test_cabecalhos_padrao_do_excel_sao_substituidos():
+    """Ao estender a tabela, o Excel batiza as colunas novas de 'Coluna3', 'Coluna4'...: têm de virar os nomes certos."""
+    eventos = []
+
+    class Rng:
+        Row, Rows = 7, type("R", (), {"Count": 3221})()
+        class Columns: Count = 19
+    class Tab:
+        Range = Rng()
+    class Ws:
+        def __init__(self): self.dados = {(7, 14): "Polo conferido", (7, 15): "Coluna3", (7, 16): "Coluna4", (7, 17): "Coluna5", (7, 18): "Coluna6", (7, 19): "Coluna7"}
+        def ListObjects(self, nome): return Tab()
+        def Cells(self, r, c):
+            ws = self
+            class C:
+                @property
+                def Value(s): return ws.dados.get((r, c))
+                @Value.setter
+                def Value(s, v): ws.dados[(r, c)] = v
+                Font = type("F", (), {"Bold": False})()
+            return C()
+    ws = Ws()
+    ap.garantir_colunas_controle(ws, {"tabela_publicacoes": "Tabela1"}, vazias=lambda ws_, c1, c2: True)
+    assert [ws.dados[(7, c)] for c in range(14, 20)] == ["Polo conferido", "ID DJEN", "Link", "Origem", "Lote", "CONFERIR"]
+
+
+def test_transportar_estende_tabela_de_prazos_feitos_tambem(cfg, tmp_path, monkeypatch):
+    """'Polo conferido' (N) existe em Prazos Feitos e também se descolaria ao ordenar a Tabela2 (revisão C3)."""
+    _cfg_pc(cfg, tmp_path); eventos = []; ws = _Ws(eventos)
+    _fakes(monkeypatch, eventos, ws)
+    chamadas = []
+    monkeypatch.setattr(ap, "garantir_colunas_controle", lambda ws_, cfg_, vazias=None, tabela=None: chamadas.append(tabela))
+    par = _paralela(cfg, date(2026, 10, 16), [_linha("1")], decisoes={8: "Agendar"})
+    ap.transportar(cfg, par, str(tmp_path / "agenda.xlsx"))
+    assert chamadas == ["Tabela1", "Tabela2"]

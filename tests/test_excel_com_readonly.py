@@ -110,3 +110,39 @@ def test_bloqueado_nao_cria_arquivo(tmp_path):
     alvo = tmp_path / "nao_existe.xlsx"
     assert excel_com._bloqueado(str(alvo)) is False
     assert not alvo.exists()          # open(..., "a") criaria o arquivo
+
+
+def test_fechar_livro_solta_referencias_e_nao_mata_se_o_excel_sai(monkeypatch, tmp_path):
+    """O Excel só sai sozinho sem referências COM vivas: fechar_livro limpa o Livro e espera; só mata em último caso."""
+    monkeypatch.setattr(excel_com.time, "sleep", lambda s: None)
+    monkeypatch.setattr(excel_com, "_pid_de", lambda xl: 4242)
+    vivo = [True, False]                                    # sai sozinho na 2ª olhada
+    monkeypatch.setattr(excel_com, "_processo_vivo", lambda pid: vivo.pop(0) if vivo else False)
+    mortos = []
+    monkeypatch.setattr(excel_com, "_encerrar_processo", lambda pid: mortos.append(pid))
+    xl = _Xl([False]); wb = xl.Workbooks.Open("x")
+    livro = excel_com.Livro(xl, wb, True, str(tmp_path / "x.xlsx"))
+    excel_com.fechar_livro(livro)
+    assert livro.xl is None and livro.wb is None and mortos == [] and xl.quit is True
+
+
+def test_fechar_livro_remove_trava_orfa_quando_mata(monkeypatch, tmp_path):
+    monkeypatch.setattr(excel_com.time, "sleep", lambda s: None)
+    monkeypatch.setattr(excel_com, "_pid_de", lambda xl: 4242)
+    monkeypatch.setattr(excel_com, "_processo_vivo", lambda pid: True)
+    monkeypatch.setattr(excel_com, "_encerrar_processo", lambda pid: None)
+    (tmp_path / "~$x.xlsx").write_bytes(b"lock")
+    xl = _Xl([False]); wb = xl.Workbooks.Open("x")
+    excel_com.fechar_livro(excel_com.Livro(xl, wb, True, str(tmp_path / "x.xlsx")), espera_saida=1)
+    assert not (tmp_path / "~$x.xlsx").exists()
+
+
+def test_abrir_livro_devolve_livro_iteravel(monkeypatch):
+    monkeypatch.setattr(excel_com.time, "sleep", lambda s: None)
+    monkeypatch.setattr(excel_com, "_livro_na_instancia_ativa", lambda caminho: None)
+    monkeypatch.setattr(excel_com, "_bloqueado", lambda caminho: False)
+    xl = _Xl([False])
+    monkeypatch.setattr(excel_com, "_nova_instancia", lambda visivel: xl)
+    livro = excel_com.abrir_livro("x.xlsx")
+    a, b, c = livro
+    assert a is xl and b is livro.wb and c is True and livro.caminho.endswith("x.xlsx")

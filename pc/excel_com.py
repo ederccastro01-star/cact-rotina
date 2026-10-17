@@ -170,12 +170,23 @@ def _nova_instancia(visivel: bool):
     return xl
 
 
-def abrir_livro(caminho: str, visivel: bool = False):
-    """Conecta ao livro já aberto na instância ativa do Excel; senão abre numa instância própria, escondida.
-    Devolve (xl, wb, aberto_por_mim). Quem abriu fecha (``fechar_livro``). Nunca devolve livro só-leitura."""
+class Livro:
+    """Par (xl, wb) devolvido por ``abrir_livro``. Iterável por compatibilidade: ``xl, wb, aberto = livro``.
+    ``fechar_livro`` zera xl/wb: sem referências COM vivas o Excel escondido sai sozinho."""
+
+    def __init__(self, xl, wb, aberto_por_mim: bool, caminho: str):
+        self.xl, self.wb, self.aberto_por_mim, self.caminho = xl, wb, aberto_por_mim, caminho
+
+    def __iter__(self):
+        return iter((self.xl, self.wb, self.aberto_por_mim))
+
+
+def abrir_livro(caminho: str, visivel: bool = False) -> Livro:
+    """Conecta ao livro já aberto na instância VISÍVEL do Excel; senão abre numa instância própria, escondida.
+    Devolve um ``Livro``. Quem abriu fecha (``fechar_livro``). Nunca devolve livro só-leitura."""
     ativo = _livro_na_instancia_ativa(caminho)
     if ativo:
-        return ativo[0], ativo[1], False
+        return Livro(ativo[0], ativo[1], False, caminho)
     for _ in range(30):                       # espera o arquivo ser solto (Quit do Excel é assíncrono; OneDrive)
         if not _bloqueado(caminho):
             break
@@ -184,7 +195,7 @@ def abrir_livro(caminho: str, visivel: bool = False):
     for tentativa in range(TENTATIVAS_SO_LEITURA):
         wb = com(xl.Workbooks.Open, os.path.abspath(caminho), UpdateLinks=0, ReadOnly=False)
         if not com(lambda: wb.ReadOnly):
-            return xl, wb, True
+            return Livro(xl, wb, True, caminho)
         com(wb.Close, False)
         time.sleep(2)
     com(xl.Quit)
@@ -192,21 +203,30 @@ def abrir_livro(caminho: str, visivel: bool = False):
                        f"(trava do OneDrive ou de outra instância); nada foi gravado.")
 
 
-def fechar_livro(xl, wb, aberto_por_mim: bool, espera_saida: int = 3) -> None:
+def fechar_livro(livro, wb=None, aberto_por_mim=None, espera_saida: int = 10) -> None:
     """Fecha SEM salvar (quem gravou já chamou wb.Save) e encerra a instância própria; nunca Close(True).
 
-    O processo do Excel só sai quando todas as referências COM morrem; enquanto vive, o próximo
-    GetActiveObject pode cair nele e travar. Espera a saída e, se não sair, encerra o processo
-    (é a NOSSA instância escondida; a do usuário nunca passa por aqui)."""
-    if not aberto_por_mim:
+    O processo do Excel só sai quando todas as referências COM morrem: por isso o ``Livro`` é esvaziado
+    e o lixo coletado antes de esperar. Se mesmo assim não sair em ``espera_saida`` s, encerra o processo
+    (é a NOSSA instância escondida) e apaga a trava ``~$arquivo`` que ele deixaria órfã; a do usuário nunca
+    passa por aqui. Aceita também a forma antiga ``fechar_livro(xl, wb, aberto_por_mim)``."""
+    import gc
+    if isinstance(livro, Livro):
+        xl, wb, aberto, caminho = livro.xl, livro.wb, livro.aberto_por_mim, livro.caminho
+    else:
+        xl, aberto, caminho = livro, aberto_por_mim, None
+    if not aberto:
         return
     pid = _pid_de(xl)
     try:
         com(wb.Close, False)
     finally:
         com(xl.Quit)
-        import gc
-        gc.collect()          # solta proxies COM pendentes: com eles vivos o Excel não sai sozinho
+        if isinstance(livro, Livro):
+            livro.xl = livro.wb = None
+        xl = wb = None
+        gc.collect()
+        matou = False
         if pid:
             for _ in range(max(1, espera_saida)):
                 if not _processo_vivo(pid):
@@ -214,10 +234,18 @@ def fechar_livro(xl, wb, aberto_por_mim: bool, espera_saida: int = 3) -> None:
                 time.sleep(1)
             else:
                 _encerrar_processo(pid)
-                for _ in range(10):                 # confirma a morte: um GetActiveObject sobre processo morrendo trava
+                matou = True
+                for _ in range(10):
                     if not _processo_vivo(pid):
                         break
                     time.sleep(0.5)
+        if matou and caminho:
+            trava = os.path.join(os.path.dirname(os.path.abspath(caminho)), "~$" + os.path.basename(caminho))
+            try:
+                if os.path.exists(trava):
+                    os.remove(trava)
+            except OSError:
+                pass
         time.sleep(2)  # ROT e trava do arquivo levam alguns instantes para sumir depois da saída
 
 

@@ -244,12 +244,15 @@ def garantir_colunas_controle(ws, cfg: dict, vazias=None) -> None:
         if not vazias(ws, colunas + 1 if colunas >= 14 else 15, ULTIMA_COLUNA_CONTROLE):
             raise RuntimeError("colunas O–S da Agenda têm dados fora da tabela; não estendo a tabela sem conferência")
         linhas = int(com(lambda: tab.Range.Rows.Count))
-        novo = com(tab.Range.Resize, linhas, ULTIMA_COLUNA_CONTROLE)
+        topo = int(com(lambda: tab.Range.Row))
+        # intervalo explícito, alinhado ao cabeçalho da tabela (Range.Resize via COM não se alinha)
+        novo = com(lambda: ws.Range(ws.Cells(topo, 1), ws.Cells(topo + linhas - 1, ULTIMA_COLUNA_CONTROLE)))
         com(tab.Resize, novo)
     cab = int(com(lambda: tab.Range.Row))
     for c, titulo in CABECALHOS_CONTROLE.items():
         cel = ws.Cells(cab, c)
-        if com(lambda: cel.Value) in (None, ""):
+        atual = com(lambda: cel.Value)
+        if atual in (None, "") or str(atual).startswith("Coluna"):      # o Excel batiza colunas novas de "ColunaN"
             com(set_cell, ws, cab, c, titulo)
             try:
                 cel.Font.Bold = True
@@ -305,12 +308,12 @@ def transportar(cfg: dict, caminho_paralela_: str, agenda: str) -> Razao | None:
     """Grava na Agenda oficial as linhas com decisão Agendar / Corrigir e agendar.
     Razão 'em andamento' gravado ANTES da primeira escrita; toda chamada COM passa por com()."""
     linhas = ler_paralela(caminho_paralela_)
-    xl, wb, fechar = abrir_livro(agenda)
+    livro = abrir_livro(agenda)
     sel: list[dict] = []
     lote = ""
     try:
-        ws = com(wb.Worksheets, cfg.get("aba_publicacoes", "Publicações"))
-        ids_agenda = ids_ja_lancados(cfg, lambda aba: coluna_valores(com(wb.Worksheets, aba), COL["id_djen"]))
+        ws = com(livro.wb.Worksheets, cfg.get("aba_publicacoes", "Publicações"))
+        ids_agenda = ids_ja_lancados(cfg, lambda aba: coluna_valores(com(livro.wb.Worksheets, aba), COL["id_djen"]))
         sel, avisos = selecionar(linhas, ids_agenda)
         for a in avisos:
             _log(a)
@@ -341,11 +344,11 @@ def transportar(cfg: dict, caminho_paralela_: str, agenda: str) -> Razao | None:
             razao.linhas[i]["valores"] = {str(k): (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in valores.items()}
         razao.tipo = "transporte"
         caminho_razao = _salvar_razao(razao, cfg)
-        com(wb.Save)
+        com(livro.wb.Save)
         _log(f"{len(sel)} linha(s) gravadas na Agenda; razão: {caminho_razao}")
     finally:
         ws = None                     # solta os proxies COM antes de fechar (o Excel só sai sem referências vivas)
-        fechar_livro(xl, wb, fechar)
+        fechar_livro(livro)
     _marcar_lote_na_paralela(caminho_paralela_, sel, lote)
     avisar(f"{len(sel)} linha(s) gravadas na Agenda oficial")
     return razao
@@ -353,19 +356,19 @@ def transportar(cfg: dict, caminho_paralela_: str, agenda: str) -> Razao | None:
 
 def desfazer(cfg: dict, razao_path: str) -> int:
     razao = Razao.carregar(razao_path)
-    xl, wb, fechar = abrir_livro(caminho_agenda(cfg))
+    livro = abrir_livro(caminho_agenda(cfg))
     try:
-        ws = com(wb.Worksheets, cfg.get("aba_publicacoes", "Publicações"))
+        ws = com(livro.wb.Worksheets, cfg.get("aba_publicacoes", "Publicações"))
         alvo = linhas_para_desfazer(razao, coluna_valores(ws, COL["id_djen"]))
         # linha INTEIRA da planilha (apagar só a linha da tabela deixaria colunas fora dela com IDs órfãos)
         for r in sorted(alvo, reverse=True):
             com(lambda r=r: ws.Rows(r).Delete())
         Razao(quando=datetime.now().isoformat(timespec="seconds"), paralela=razao.paralela, linhas=razao.linhas,
               tipo="desfazer").salvar(razao_path.replace(".json", "_desfeito.json"))
-        com(wb.Save)
+        com(livro.wb.Save)
     finally:
         ws = None
-        fechar_livro(xl, wb, fechar)
+        fechar_livro(livro)
     # o razão original não pode mais contar como "lançado" para a idempotência
     razao.tipo = "desfazer"
     razao.salvar(razao_path)
