@@ -1,0 +1,50 @@
+[
+  {
+    "id": 9001, "hash": "h9001", "siglaTribunal": "TRT18", "tipoComunicacao": "Intimação", "tipoDocumento": "Notificação",
+    "data_disponibilizacao": "2026-10-16", "numero_processo": "00000011120265180001", "numeroprocessocommascara": "0000001-11.2026.5.18.0001",
+    "link": "https://pje.trt18.jus.br/pjekz/validacao/9001",
+    "texto": "PODER JUDICIÁRIO JUSTIÇA DO TRABALHO TRIBUNAL REGIONAL DO TRABALHO DA 18ª REGIÃO 1ª VARA DO TRABALHO DE GOIÂNIA ATOrd 0000001-11.2026.5.18.0001 AUTOR: AUTOR TESTE RÉU: REU TESTE LTDA INTIMAÇÃO DESTINATÁRIO: AUTOR TESTE Indicar os dados da conta bancária para fins de expedição de alvará. Prazo: 05 (cinco) dias. GOIANIA/GO, 15 de outubro de 2026.<br>Intimado(s) / Citado(s)<br> - AUTOR TESTE<br>",
+    "destinatarios": [{"nome": "AUTOR TESTE", "polo": "A"}, {"nome": "REU TESTE LTDA", "polo": "P"}],
+    "destinatarioadvogados": [{"advogado": {"nome": "EDER CARLOS DE CASTRO", "numero_oab": "23147", "uf_oab": "GO"}}, {"advogado": {"nome": "ADVOGADO ADVERSO", "numero_oab": "99999", "uf_oab": "GO"}}]
+  },
+  {
+    "id": 9002, "hash": "h9002", "siglaTribunal": "TRT18", "tipoComunicacao": "Intimação", "tipoDocumento": "Notificação",
+    "data_disponibilizacao": "2026-10-16", "numero_processo": "00000011120265180001", "numeroprocessocommascara": "0000001-11.2026.5.18.0001",
+    "link": "https://pje.trt18.jus.br/pjekz/validacao/9002",
+    "texto": "INTIMAÇÃO AO ADVOGADO DA PARTE RÉ Vistas dos cálculos. Fica a parte ré intimada para, dentro do prazo de 8 (oito) dias, apresentar impugnação fundamentada, sob pena de preclusão, conforme o artigo 879, § 2º, da CLT. GOIANIA/GO, 15 de outubro de 2026.<br>Intimado(s) / Citado(s)<br> - REU TESTE LTDA<br>",
+    "destinatarios": [{"nome": "AUTOR TESTE", "polo": "A"}, {"nome": "REU TESTE LTDA", "polo": "P"}],
+    "destinatarioadvogados": [{"advogado": {"nome": "EDER CARLOS DE CASTRO", "numero_oab": "23147", "uf_oab": "GO"}}, {"advogado": {"nome": "ADVOGADO ADVERSO", "numero_oab": "99999", "uf_oab": "GO"}}]
+  },
+  {
+    "id": 9003, "hash": "h9003", "siglaTribunal": "TRT18", "tipoComunicacao": "Intimação", "tipoDocumento": "Acórdão",
+    "data_disponibilizacao": "2026-10-16", "numero_processo": "00000011120265180001", "numeroprocessocommascara": "0000001-11.2026.5.18.0001",
+    "link": "https://pje.trt18.jus.br/pjekz/validacao/9003",
+    "texto": "PODER JUDICIÁRIO JUSTIÇA DO TRABALHO TRIBUNAL REGIONAL DO TRABALHO DA 18ª REGIÃO 2ª TURMA ROT 0000001-11.2026.5.18.0001 RECORRENTE: REU TESTE LTDA RECORRIDO: AUTOR TESTE ACÓRDÃO EMENTA RECURSO ORDINÁRIO. HORAS EXTRAS. Conheço do recurso e nego provimento. Intimem-se.<br>Intimado(s) / Citado(s)<br> - AUTOR TESTE<br> - REU TESTE LTDA<br>",
+    "destinatarios": [{"nome": "AUTOR TESTE", "polo": "A"}, {"nome": "REU TESTE LTDA", "polo": "P"}],
+    "destinatarioadvogados": [{"advogado": {"nome": "EDER CARLOS DE CASTRO", "numero_oab": "23147", "uf_oab": "GO"}}, {"advogado": {"nome": "ADVOGADO ADVERSO", "numero_oab": "99999", "uf_oab": "GO"}}]
+  },
+  {
+    "id": 9004, "hash": "h9004", "siglaTribunal": "TRT18", "tipoComunicacao": "Intimação", "tipoDocumento": "Notificação",
+    "data_disponibilizacao": "2026-10-16", "numero_processo": "00000011120265180001", "numeroprocessocommascara": "0000001-11.2026.5.18.0001",
+    "link": "https://pje.trt18.jus.br/pjekz/validacao/9004",
+    "texto": "PODER JUDICIÁRIO JUSTIÇA DO TRABALHO TRIBUNAL REGIONAL DO TRABALHO DA 18ª REGIÃO 1ª VARA DO TRABALHO DE GOIÂNIA ATOrd 0000001-11.2026.5.18.0001 AUTOR: AUTOR TESTE RÉU: REU TESTE LTDA INTIMAÇÃO DESTINATÁRIO: AUTOR TESTE Indicar os dados da conta bancária para fins de expedição de alvará. Prazo: 05 (cinco) dias. GOIANIA/GO, 15 de outubro de 2026.<br>Intimado(s) / Citado(s)<br> - AUTOR TESTE<br>",
+    "destinatarios": [{"nome": "AUTOR TESTE", "polo": "A"}, {"nome": "REU TESTE LTDA", "polo": "P"}],
+    "destinatarioadvogados": [{"advogado": {"nome": "EDER CARLOS DE CASTRO", "numero_oab": "23147", "uf_oab": "GO"}}]
+  },
+  {
+    "id": 9005, "hash": "h9005", "siglaTribunal": "TJGO", "tipoComunicacao": "Intimação", "tipoDocumento": "Ato ordinatório",
+    "data_disponibilizacao": "2026-10-16", "numero_processo": "00000021120268090001", "numeroprocessocommascara": "0000002-11.2026.8.09.0001",
+    "link": "https://projudi.tjgo.jus.br/9005",
+    "texto": "INTIMAÇÃO da parte EXEQUENTE para, no prazo de 05 (cinco) dias, manifestar nos autos acerca da petição de evento 93. Goiânia, 15 de outubro de 2026.",
+    "destinatarios": [{"nome": "EXEQUENTE TESTE", "polo": "A"}],
+    "destinatarioadvogados": [{"advogado": {"nome": "ADVOGADO ADVERSO", "numero_oab": "99999", "uf_oab": "GO"}}]
+  },
+  {
+    "id": 9006, "hash": "h9006", "siglaTribunal": "TRT18", "tipoComunicacao": "Intimação", "tipoDocumento": "Notificação",
+    "data_disponibilizacao": "2026-10-16", "numero_processo": "00000011120265180001", "numeroprocessocommascara": "0000001-11.2026.5.18.0001",
+    "link": "https://pje.trt18.jus.br/pjekz/validacao/9006",
+    "texto": "INTIMAÇÃO DESTINATÁRIO: REU TESTE LTDA Vista dos Cálculos Judiciais, sob pena de preclusão, nos termos do art. 879, §2º da CLT. Prazo comum de 08 dias. ANAPOLIS/GO, 15 de outubro de 2026.<br>Intimado(s) / Citado(s)<br> - REU TESTE LTDA<br>",
+    "destinatarios": [{"nome": "AUTOR TESTE", "polo": "A"}, {"nome": "REU TESTE LTDA", "polo": "P"}],
+    "destinatarioadvogados": [{"advogado": {"nome": "EDER CARLOS DE CASTRO", "numero_oab": "23147", "uf_oab": "GO"}}, {"advogado": {"nome": "ADVOGADO ADVERSO", "numero_oab": "99999", "uf_oab": "GO"}}]
+  }
+]

@@ -376,6 +376,27 @@ def carregar_de_arquivo(caminho):
     return pubs
 
 
+def carregar_de_json(caminho):
+    """Modo de teste/reprocessamento: lê uma lista JSON de comunicações do DJEN (formato da API)
+    e devolve o mesmo formato de buscar_djen: [{"processo", "texto", "item"}], deduplicado por id/hash."""
+    with open(caminho, encoding="utf-8") as fh:
+        itens = json.load(fh)
+    if isinstance(itens, dict):
+        itens = itens.get("items") or itens.get("result") or itens.get("comunicacoes") or []
+    coletados = {}
+    for item in itens:
+        proc = _processo_item(item)
+        texto = _texto_item(item)
+        if not texto:
+            continue
+        ident = _extrai_campo(item, "id", "hash") or (so_digitos(proc) + "|" + texto[:120])
+        if ident in coletados:
+            continue
+        coletados[ident] = {"processo": proc, "texto": texto, "item": item}
+    log(f"Publicações lidas do JSON: {len(coletados)}")
+    return list(coletados.values())
+
+
 def salvar_relatorio_detalhado(pubs, cfg, data_disp):
     pasta = cfg.get("pasta_historico", cfg["pasta_saida"])
     os.makedirs(pasta, exist_ok=True)
