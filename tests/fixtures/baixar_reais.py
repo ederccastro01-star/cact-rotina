@@ -22,10 +22,19 @@ EXTRA = [("00117579820245180009", "2026-10-15")]  # processo novo real (OAB 2314
 
 
 def itens(proc20, dia):
+    """O DJEN devolve 500 avulso com frequência: 4 tentativas (5, 15, 45 s), depois desiste do processo."""
     url = (f"{API}?numeroProcesso={proc20}&dataDisponibilizacaoInicio={dia}"
            f"&dataDisponibilizacaoFim={dia}&itensPorPagina=50")
-    with urllib.request.urlopen(url, timeout=60) as r:
-        return json.loads(r.read()).get("items", [])
+    for espera in (5, 15, 45, None):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r:
+                return json.loads(r.read()).get("items", [])
+        except Exception as e:  # noqa: BLE001
+            if espera is None:
+                print(f"  ! {proc20}: desistindo ({e})")
+                return []
+            print(f"  ! {proc20}: {e}; nova tentativa em {espera}s")
+            time.sleep(espera)
 
 
 def main(detalhado, agenda):
