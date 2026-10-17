@@ -64,14 +64,54 @@ def main(detalhado, agenda):
         json.dump(todos, fh, ensure_ascii=False)
     print(f"{len(procs)} processos, {len(todos)} comunicações -> {saida}")
 
+    amostra_agenda(agenda)
+
+
+def amostra_agenda(agenda):
+    """Cópia da Agenda só com as 3 abas usadas. Feita PELO EXCEL (COM): um .xlsx salvo pelo openpyxl a partir
+    da Agenda não abre no Excel ('O método Open da classe Workbooks falhou'), e os testes -m excel precisam
+    de um arquivo que o Excel aceite. Sem Excel, cai no openpyxl (serve só para os testes sem Excel)."""
+    alvo = os.path.abspath(os.path.join(REAIS, "agenda_amostra.xlsx"))
+    try:
+        import pythoncom
+        import win32com.client
+    except ImportError:
+        pythoncom = win32com = None
+    if win32com is not None:
+        tmp = os.path.abspath(os.path.join(REAIS, "_agenda_tmp.xlsx"))
+        import shutil
+        shutil.copyfile(agenda, tmp)
+        pythoncom.CoInitialize()
+        xl = win32com.client.DispatchEx("Excel.Application"); xl.Visible = False; xl.DisplayAlerts = False
+        try:
+            wb = xl.Workbooks.Open(tmp, UpdateLinks=0)
+            for ws in list(wb.Worksheets):
+                if ws.Name not in ("Publicações", "Prazos Feitos", "Prazos Feitos (Arquivo)"):
+                    ws.Delete()
+            if os.path.exists(alvo):
+                os.remove(alvo)
+            wb.SaveAs(alvo, FileFormat=51)  # xlOpenXMLWorkbook
+            nomes = [ws.Name for ws in wb.Worksheets]
+            wb.Close(False)
+        finally:
+            xl.Quit()
+            for _ in range(10):          # o Excel solta o arquivo alguns instantes depois do Quit
+                try:
+                    os.remove(tmp); break
+                except PermissionError:
+                    time.sleep(1)
+        print("agenda amostra (Excel) ->", alvo, nomes)
+        return
     wa = openpyxl.load_workbook(agenda)
     for nome in list(wa.sheetnames):
         if nome not in ("Publicações", "Prazos Feitos", "Prazos Feitos (Arquivo)"):
             del wa[nome]
-    alvo = os.path.join(REAIS, "agenda_amostra.xlsx")
     wa.save(alvo)
-    print("agenda amostra ->", alvo, [ws.title for ws in wa.worksheets])
+    print("agenda amostra (openpyxl; NÃO abre no Excel) ->", alvo)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    if sys.argv[1] == "--so-agenda":
+        amostra_agenda(sys.argv[2])
+    else:
+        main(sys.argv[1], sys.argv[2])
