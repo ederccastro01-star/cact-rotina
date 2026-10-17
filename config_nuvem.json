@@ -4,23 +4,99 @@
   "nome_agenda": "CACT - Agenda de Prazos.xlsx",
   "nome_cadastro": "CACT - Cadastro Publicações.xlsx",
   "subpasta_historico": "CACT - Histórioco de Publicações",
-
   "aba_cadastro": null,
   "buscar_por_nome": true,
   "aba_publicacoes": "Publicações",
   "aba_prazos_feitos": "Prazos Feitos",
-
   "djen_url": "https://comunicaapi.pje.jus.br/api/v1/comunicacao",
   "uf_padrao": "GO",
   "itens_por_pagina": 100,
   "timeout_segundos": 60,
   "pausa_entre_consultas_seg": 0.5,
   "processos_monitorados": [],
-
   "feriados": [
-    "2026-01-01", "2026-02-16", "2026-02-17", "2026-04-03", "2026-04-21",
-    "2026-05-01", "2026-06-04", "2026-09-07", "2026-10-12", "2026-11-02",
-    "2026-11-15", "2026-11-20", "2026-12-25",
+    "2026-01-01",
+    "2026-02-16",
+    "2026-02-17",
+    "2026-04-03",
+    "2026-04-21",
+    "2026-05-01",
+    "2026-06-04",
+    "2026-09-07",
+    "2026-10-12",
+    "2026-11-02",
+    "2026-11-15",
+    "2026-11-20",
+    "2026-12-25",
     "2027-01-01"
-  ]
+  ],
+  "calendarios": {
+    "NACIONAL": [
+      "2026-01-01",
+      "2026-02-16",
+      "2026-02-17",
+      "2026-04-03",
+      "2026-04-21",
+      "2026-05-01",
+      "2026-06-04",
+      "2026-09-07",
+      "2026-10-12",
+      "2026-11-02",
+      "2026-11-15",
+      "2026-11-20",
+      "2026-12-25",
+      "2027-01-01"
+    ],
+    "TRT18": [
+      "2026-05-24",
+      "2026-10-24",
+      "2027-05-24",
+      "2027-10-24"
+    ],
+    "TJGO": [
+      "2026-05-24",
+      "2026-10-24",
+      "2027-05-24",
+      "2027-10-24"
+    ],
+    "SUSPENSOES": [
+      [
+        "2026-12-20",
+        "2027-01-20"
+      ]
+    ]
+  },
+  "prazos_legais": [
+    {
+      "regex": "EMBARGOS DE DECLARA",
+      "dias": 5,
+      "base": "CLT 897-A"
+    },
+    {
+      "regex": "RECURSO ORDIN|RECURSO DE REVISTA|AGRAVO|CONTRARRAZ|CONTRAMINUTA|EMBARGOS AO TST|RECURSO \\(",
+      "dias": 8,
+      "base": "CLT 895/897/896"
+    },
+    {
+      "regex": "EMBARGOS A EXECU|ART\\.? ?884|IMPUGNA.*SENTENCA DE LIQUIDA",
+      "dias": 5,
+      "base": "CLT 884"
+    },
+    {
+      "regex": "IMPUGNA.*CALCUL|MANIFESTA.*CALCUL",
+      "dias": 8,
+      "base": "CLT 879 §2º"
+    },
+    {
+      "regex": "RECURSO EXTRAORDIN",
+      "dias": 15,
+      "base": "CPC 1.003 §5º"
+    },
+    {
+      "regex": "PAGAMENTO.*48|DEPOSITO.*48|48 ?H",
+      "dias": 2,
+      "base": "CLT 880"
+    }
+  ],
+  "prazo_padrao_dias": 5
 }
