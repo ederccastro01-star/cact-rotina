@@ -62,6 +62,9 @@ def coletar(cfg: dict, dia: date, agora: datetime, listar=None, contar_backlog=N
             dry_run: bool = False, destino: str | None = None) -> dict:
     """Uma rodada: e-mails elegíveis da janela que não estão no razão → relatório → razão → (opcional) arquivar."""
     pc = cfg_push(cfg)
+    if not pc["fontes"]:
+        _log(f"coleta {dia:%d/%m}: nenhuma fonte configurada em push.fontes; nada a fazer")
+        return {"emails": 0, "elegiveis": 0, "novos": 0, "registros": 0, "backlog": 0, "sem_registro": [], "faltantes_jusbrasil": 0, "caminho": None}
     if listar is None or contar_backlog is None or mover is None:
         from pc import push_outlook
         listar = listar or push_outlook.listar

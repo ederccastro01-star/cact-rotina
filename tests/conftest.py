@@ -37,11 +37,13 @@ def agenda_amostra():
 
 
 @pytest.fixture
-def cfg():
+def cfg(tmp_path):
     with open(os.path.join(RAIZ, "config_nuvem.json"), encoding="utf-8") as fh:
         base = json.load(fh)
     c = dict(base)
     c["anthropic_api_key"] = ""
     c["oabs_escritorio"] = ["23147/GO", "51509/GO", "26734/GO", "8060/GO"]
     c.setdefault("processos_monitorados", [])
+    # nunca tocar no Outlook nem no razão real durante os testes (um teste do vigia disparou coleta real em 17/10)
+    c["push"] = {"fontes": [], "janela_dias": 7, "arquivar_em": None, "ledger": str(tmp_path / "push_ledger.json")}
     return c

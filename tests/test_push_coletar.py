@@ -148,3 +148,13 @@ def test_passo_vigia_nao_coleta_se_relatorio_do_dia_ja_existe(cfg, tmp_path, mon
     estado = ap.Estado()
     ap.passo_vigia(cfg, date(2026, 10, 19), datetime(2026, 10, 19, 9, 15), estado)
     assert estado.coleta_feita is True
+
+
+def test_sem_fontes_nao_abre_outlook(cfg, tmp_path):
+    _cfg(cfg, tmp_path, fontes=[])
+
+    def explode(*a):
+        raise AssertionError("não devia listar")
+
+    info = pc_.coletar(cfg, date(2026, 10, 19), AGORA, listar=explode, contar_backlog=explode)
+    assert info["emails"] == 0 and info["caminho"] is None and not os.path.exists(cfg["push"]["ledger"])
