@@ -109,5 +109,11 @@
   ],
   "dispensas": [],
   "subpasta_paralela": "CACT - Agenda Paralela",
-  "gerar_paralela": true
+  "gerar_paralela": true,
+  "pc": {
+    "pasta_controladoria": "C:\\Users\\ederc\\OneDrive\\Advocacia\\Trabalhista\\Controladoria",
+    "hora_alerta_sem_arquivo": "10:00",
+    "intervalo_min": 15
+  },
+  "tabela_publicacoes": "Tabela1"
 }
