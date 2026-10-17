@@ -115,5 +115,6 @@
     "hora_alerta_sem_arquivo": "10:00",
     "intervalo_min": 15
   },
-  "tabela_publicacoes": "Tabela1"
+  "tabela_publicacoes": "Tabela1",
+  "tabela_prazos_feitos": "Tabela2"
 }

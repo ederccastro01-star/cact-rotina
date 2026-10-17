@@ -129,7 +129,7 @@ def test_transportar_grava_razao_antes_do_save(cfg, tmp_path, monkeypatch):
     monkeypatch.setattr(ap, "abrir_livro", abrir); monkeypatch.setattr(ap, "proxima_linha_tabela", proxima)
     monkeypatch.setattr(ap, "coluna_valores", coluna); monkeypatch.setattr(ap, "set_cell", lambda ws, r, c, v: setattr(ws.Cells(r, c), "Value", v))
     monkeypatch.setattr(ap, "set_text", lambda ws, r, c, v: eventos.append(("set_text", r, c, v)))
-    monkeypatch.setattr(ap, "garantir_colunas_controle", lambda ws_, cfg_: None)
+    monkeypatch.setattr(ap, "garantir_colunas_controle", lambda ws_, cfg_, **k: None)
     monkeypatch.setattr(ap, "avisar", lambda m: None); monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None)
     monkeypatch.setattr(ap, "_salvar_razao", lambda razao, cfg_: eventos.append(("razao_salvo", len(razao.linhas))) or "r.json")
     paralela = _paralela(cfg, date(2026, 10, 16), [_linha("1"), _linha("2")], decisoes={8: "Agendar", 9: "Descartar"})

@@ -234,11 +234,11 @@ def _colunas_vazias(ws, c1: int, c2: int) -> bool:
     return True
 
 
-def garantir_colunas_controle(ws, cfg: dict, vazias=None) -> None:
+def garantir_colunas_controle(ws, cfg: dict, vazias=None, tabela: str | None = None) -> None:
     """Estende a tabela da aba até a coluna S e põe os cabeçalhos N–S. Sem isso, ordenar a tabela
     (A–K) descolaria ID DJEN e Polo conferido das linhas a que pertencem (revisão C3)."""
     vazias = vazias or _colunas_vazias
-    tab = com(lambda: ws.ListObjects(cfg.get("tabela_publicacoes", "Tabela1")))
+    tab = com(lambda: ws.ListObjects(tabela or cfg.get("tabela_publicacoes", "Tabela1")))
     colunas = int(com(lambda: tab.Range.Columns.Count))
     if colunas < ULTIMA_COLUNA_CONTROLE:
         if not vazias(ws, colunas + 1 if colunas >= 14 else 15, ULTIMA_COLUNA_CONTROLE):
@@ -320,7 +320,13 @@ def transportar(cfg: dict, caminho_paralela_: str, agenda: str) -> Razao | None:
         if not sel:
             _log("nada a transportar")
             return None
-        garantir_colunas_controle(ws, cfg)
+        garantir_colunas_controle(ws, cfg, tabela=cfg.get("tabela_publicacoes", "Tabela1"))
+        try:   # Prazos Feitos também tem "Polo conferido" (N) fora da Tabela2: estende para não descolar ao ordenar
+            ws_pf = com(livro.wb.Worksheets, cfg.get("aba_prazos_feitos", "Prazos Feitos"))
+            garantir_colunas_controle(ws_pf, cfg, tabela=cfg.get("tabela_prazos_feitos", "Tabela2"))
+            ws_pf = None
+        except Exception as e:  # noqa: BLE001
+            _log(f"não estendi a tabela de Prazos Feitos: {e}")
         lote = f"Transportado em {datetime.now():%d/%m/%Y %H:%M}"
         razao = Razao(quando=datetime.now().isoformat(timespec="seconds"), paralela=caminho_paralela_, tipo="em andamento",
                       linhas=[{"aba": cfg.get("aba_publicacoes", "Publicações"), "linha_agenda": None, "ids": l["ids"],

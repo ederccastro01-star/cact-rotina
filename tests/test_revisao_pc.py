@@ -115,7 +115,7 @@ def _fakes(monkeypatch, eventos, ws, rejeitar_vezes=0):
     monkeypatch.setattr(ap, "proxima_linha_tabela", lambda ws_, nome="Tabela1": (setattr(ws_, "proxima", ws_.proxima + 1), ws_.proxima)[1])
     monkeypatch.setattr(ap, "coluna_valores", lambda ws_, col, primeira=8: [])
     monkeypatch.setattr(ap, "set_cell", set_cell); monkeypatch.setattr(ap, "set_text", set_cell)
-    monkeypatch.setattr(ap, "garantir_colunas_controle", lambda ws_, cfg_: None)
+    monkeypatch.setattr(ap, "garantir_colunas_controle", lambda ws_, cfg_, **k: None)
     monkeypatch.setattr(ap, "avisar", lambda m: None); monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None)
     monkeypatch.setattr(ap, "_salvar_razao", lambda razao, cfg_: eventos.append(("razao_salvo", razao.tipo, len(razao.linhas))) or "r.json")
 
