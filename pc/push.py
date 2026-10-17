@@ -57,9 +57,8 @@ def _data(v) -> date | None:
 
 
 def _copia(caminho: str) -> str:
-    tmp = os.path.join(tempfile.mkdtemp(prefix="push_"), os.path.basename(caminho))
-    shutil.copyfile(caminho, tmp)
-    return tmp
+    from pc import arquivos
+    return arquivos.copia_temporaria(caminho, prefixo="push_")     # CopyFileW: a Agenda fica trancada pelo AutoSave
 
 
 # ----------------------------------------------------------------------------- caminhos

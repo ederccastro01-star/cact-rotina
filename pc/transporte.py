@@ -72,8 +72,8 @@ def _ids(valor) -> list[str]:
 
 def ler_paralela(caminho: str) -> list[dict]:
     """Lê Lançamentos e Pendentes de uma CÓPIA do arquivo (o original pode estar aberto no Excel)."""
-    tmp = os.path.join(tempfile.mkdtemp(prefix="paralela_"), os.path.basename(caminho))
-    shutil.copyfile(caminho, tmp)
+    from pc import arquivos
+    tmp = arquivos.copia_temporaria(caminho, prefixo="paralela_")   # CopyFileW: arquivo aberto no Excel com AutoSave
     wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
     out = []
     try:
