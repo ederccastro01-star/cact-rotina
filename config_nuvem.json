@@ -99,5 +99,13 @@
     }
   ],
   "prazo_padrao_dias": 5,
-  "aba_vocabulario": "Vocabulário"
+  "aba_vocabulario": "Vocabulário",
+  "aba_prazos_feitos_arquivo": "Prazos Feitos (Arquivo)",
+  "oabs_escritorio": [
+    "23147/GO",
+    "51509/GO",
+    "26734/GO",
+    "8060/GO"
+  ],
+  "dispensas": []
 }

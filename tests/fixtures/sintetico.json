@@ -11,7 +11,7 @@
     "id": 9002, "hash": "h9002", "siglaTribunal": "TRT18", "tipoComunicacao": "Intimação", "tipoDocumento": "Notificação",
     "data_disponibilizacao": "2026-10-16", "numero_processo": "00000011120265180001", "numeroprocessocommascara": "0000001-11.2026.5.18.0001",
     "link": "https://pje.trt18.jus.br/pjekz/validacao/9002",
-    "texto": "INTIMAÇÃO AO ADVOGADO DA PARTE RÉ Vistas dos cálculos. Fica a parte ré intimada para, dentro do prazo de 8 (oito) dias, apresentar impugnação fundamentada, sob pena de preclusão, conforme o artigo 879, § 2º, da CLT. GOIANIA/GO, 15 de outubro de 2026.<br>Intimado(s) / Citado(s)<br> - REU TESTE LTDA<br>",
+    "texto": "INTIMAÇÃO AO ADVOGADO DA PARTE RÉ Vistas dos cálculos. Fica a parte ré intimada para, dentro do prazo de 8 (oito) dias, apresentar impugnação fundamentada, sob pena de preclusão. GOIANIA/GO, 15 de outubro de 2026.<br>Intimado(s) / Citado(s)<br> - REU TESTE LTDA<br>",
     "destinatarios": [{"nome": "AUTOR TESTE", "polo": "A"}, {"nome": "REU TESTE LTDA", "polo": "P"}],
     "destinatarioadvogados": [{"advogado": {"nome": "EDER CARLOS DE CASTRO", "numero_oab": "23147", "uf_oab": "GO"}}, {"advogado": {"nome": "ADVOGADO ADVERSO", "numero_oab": "99999", "uf_oab": "GO"}}]
   },

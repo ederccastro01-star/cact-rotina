@@ -431,35 +431,59 @@ def indexar_agenda(cfg):
     - conjuntos de processos de cada guia."""
     caminho = cfg["arquivo_agenda"]
     wb = openpyxl.load_workbook(caminho, read_only=True, data_only=True)
-    ref_pub, ref_pf = {}, {}
-    set_pub, set_pf = set(), set()
+    ref_pub, ref_pf, ref_arq = {}, {}, {}
+    set_pub, set_pf, set_arq = set(), set(), set()
+    js = {}            # norm -> set de valores distintos da coluna J (AUTOR(A) / RÉU), de todas as abas
+    conferidos = set()  # norm com "Polo conferido" (coluna N) em alguma linha
 
-    def varre(aba, store, conj):
+    def _j(valor):
+        v = sem_acento(str(valor or "")).strip().upper()
+        if v.startswith("AUTOR"):
+            return "AUTOR(A)"
+        if v.startswith("RE"):
+            return "RÉU"
+        return None
+
+    def varre(aba, store, conj, minimo=11):
         if aba not in wb.sheetnames:
             return
         for row in wb[aba].iter_rows(min_row=1, values_only=True):
-            if not row or len(row) < 11:
+            if not row or len(row) < minimo:
                 continue
             n = norm_proc(row[4]) if len(row) > 4 else None
             if not n:
                 continue
             conj.add(n)
-            store[n] = {
-                "Reclamante": row[5], "Reclamado": row[6], "Advogado": row[7],
-                "Prioridade": row[8], "Cliente": row[9], "Despacho": row[10],
-            }
+            if len(row) >= 11:
+                store[n] = {
+                    "Reclamante": row[5], "Reclamado": row[6], "Advogado": row[7],
+                    "Prioridade": row[8], "Cliente": row[9], "Despacho": row[10],
+                }
+                j = _j(row[9])
+                if j:
+                    js.setdefault(n, set()).add(j)
+                if len(row) > 13 and row[13] not in (None, ""):
+                    conferidos.add(n)
+            else:
+                # "Prazos Feitos (Arquivo)" tem 9 colunas (sem Prioridade/Cliente): só pertencimento e nomes
+                store[n] = {
+                    "Reclamante": row[5], "Reclamado": row[6], "Advogado": row[7],
+                    "Prioridade": None, "Cliente": None, "Despacho": row[8],
+                }
 
     varre(cfg.get("aba_publicacoes", "Publicações"), ref_pub, set_pub)
     varre(cfg.get("aba_prazos_feitos", "Prazos Feitos"), ref_pf, set_pf)
+    varre(cfg.get("aba_prazos_feitos_arquivo", "Prazos Feitos (Arquivo)"), ref_arq, set_arq, minimo=9)
     wb.close()
 
     ref = {}
-    for n in set_pub | set_pf:
+    for n in set_pub | set_pf | set_arq:
         ref[n] = {
-            "ref": ref_pub.get(n) or ref_pf.get(n) or {},
-            "inPub": n in set_pub, "inPF": n in set_pf,
+            "ref": ref_pub.get(n) or ref_pf.get(n) or ref_arq.get(n) or {},
+            "inPub": n in set_pub, "inPF": n in set_pf, "inArq": n in set_arq,
+            "js": js.get(n, set()), "conferido": n in conferidos,
         }
-    log(f"Agenda indexada — Publicações: {len(set_pub)} | Prazos Feitos: {len(set_pf)}")
+    log(f"Agenda indexada — Publicações: {len(set_pub)} | Prazos Feitos: {len(set_pf)} | Arquivo: {len(set_arq)}")
     return ref
 
 
