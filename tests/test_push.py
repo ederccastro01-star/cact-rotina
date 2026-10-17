@@ -50,6 +50,12 @@ def test_ler_push_so_eventos_com_processo(cfg, tmp_path):
                                          (datetime(2026, 10, 15, 12, 0), None, "Pauta/Audiência", "sem processo")])
     ev = push.ler_push(c)
     assert len(ev) == 2 and ev[0]["norm"] == "00008940920265180011" and ev[0]["intimacao"] is True and ev[1]["intimacao"] is False
+
+
+def test_pauta_publicada_nao_e_intimacao(cfg, tmp_path):
+    _cfg_pc(cfg, tmp_path)
+    c = _push(cfg, date(2026, 10, 16), [(datetime(2026, 10, 15, 9, 0), "0011341-45.2015.5.18.0010", "Pauta/Audiência / Publicação/Disponibilização", "Disponibilizado(a) o(a) Pauta de Julgamento")])
+    assert push.ler_push(c)[0]["intimacao"] is False
     assert push.caminho_push(cfg, date(2026, 10, 16)) == c
 
 

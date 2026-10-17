@@ -93,7 +93,9 @@ def ler_push(caminho: str) -> list[dict]:
             data_ev = _data(row[0])
             ident = "PUSH:" + hashlib.sha1(f"{norm}|{data_ev}|{tipo}|{teor[:60]}".encode("utf-8")).hexdigest()[:12]
             out.append({"data": data_ev, "norm": norm, "processo": _mascara(row[2]), "tribunal": str(row[3] or ""), "tipo": tipo,
-                        "teor": teor, "intimacao": any(t in tipo.upper() for t in TIPOS_INTIMACAO), "ident": ident})
+                        "teor": teor, "ident": ident,
+                        # pauta de julgamento/audiência não é intimação com prazo: fica só na conferência, para conhecimento
+                        "intimacao": any(t in tipo.upper() for t in TIPOS_INTIMACAO) and "PAUTA" not in tipo.upper()})
     finally:
         wb.close()
         shutil.rmtree(os.path.dirname(tmp), ignore_errors=True)
