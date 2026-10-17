@@ -11,7 +11,7 @@ from paralela.destino import CONTRARIA, FORA, bloco, decidir_destino, indexar_ag
 from paralela.ia import carregar_vocabulario, classificar, fallback, formatar_resumo
 from paralela.planilha import Linha, gerar_paralela
 from paralela.polo import agrupar_atos
-from paralela.prazos import calcular_prazo, prazo_no_texto, tribunal_do_processo
+from paralela.prazos import calcular_prazo, prazos_no_texto, tribunal_do_processo
 
 POLO_TXT = {"A": "AUTOR", "P": "RÉU"}
 LADO_TXT = {"A": "AUTOR", "P": "RÉU", None: "desconhecido"}
@@ -39,9 +39,10 @@ def montar_linha(ato, refproc, cfg, publicado: date, cls: dict, dest) -> Linha:
     peca = (cls.get("peca") or "Manifestação").strip()
     if dest.rotulo == CONTRARIA and not _sem_acento_lower(peca).endswith("- aguardar"):
         peca = f"{peca} - aguardar"
-    n_texto = prazo_no_texto(ato.texto)
+    n_textos = prazos_no_texto(ato.texto)
+    n_texto = min(n_textos) if n_textos else None
     pr = calcular_prazo(publicado, peca, n_texto, cls.get("prazo_dias"), tribunal_do_processo(ato.norm), cfg,
-                        ciencia=dest.ciencia, data_retorno=_data_iso(cls.get("data_retorno")))
+                        ciencia=dest.ciencia, data_retorno=_data_iso(cls.get("data_retorno")), n_textos=n_textos)
     if cls.get("data_retorno") and pr.origem != "retorno":
         pr.alertas.append(f"data de retorno inválida na resposta da IA: {cls.get('data_retorno')}")
     ref = (refproc.ref if refproc else {}) or {}

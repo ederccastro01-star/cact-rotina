@@ -20,6 +20,7 @@ RE_PRAZO_NUM = re.compile(
     r"prazo\s*(?:comum\s*)?(?:de\s*|:\s*)?(\d{1,2})\s*(?:\([^)]{0,40}\))?\s*dias?", re.I)
 RE_PRAZO_EXT = re.compile(r"prazo\s*(?:comum\s*)?(?:de\s*|:\s*)?(" + "|".join(sorted(POR_EXTENSO, key=len, reverse=True)) + r")\s*dias?", re.I)
 RE_48H = re.compile(r"48\s*(?:\(quarenta e oito\)\s*)?horas", re.I)
+RE_NUM_EXT = re.compile(r"(?<!prazo de )(?<!prazo: )(\d{1,2})\s*\([a-z ]{3,30}\)\s*dias?", re.I)  # "em 5 (cinco) dias" sem a palavra prazo
 ALERTA_SEM_PRAZO = "sem prazo no texto: 5 dias úteis (CPC 218 §3º)"
 ALERTA_SEM_CALENDARIO = "calendário do tribunal não cadastrado"
 
@@ -103,18 +104,32 @@ def dias_uteis_apos(base: date, n: int, feriados: set[date], susp: list[tuple[da
 
 
 # ----------------------------------------------------------------------------- prazo no texto / legal
-def prazo_no_texto(texto: str) -> int | None:
+def prazos_no_texto(texto: str) -> list[int]:
+    """Todos os prazos em dias fixados no texto, na ordem em que aparecem (48 horas → 2)."""
     t = _asc(texto)
-    if RE_48H.search(t):
-        return 2
-    m = RE_PRAZO_NUM.search(t)
-    if m:
+    achados: list[tuple[int, int]] = []
+    for m in RE_48H.finditer(t):
+        achados.append((m.start(), 2))
+    for m in RE_PRAZO_NUM.finditer(t):
         v = int(m.group(1))
-        return v if 1 <= v <= 60 else None
-    m = RE_PRAZO_EXT.search(t)
-    if m:
-        return POR_EXTENSO.get(m.group(1).lower())
-    return None
+        if 1 <= v <= 60:
+            achados.append((m.start(), v))
+    for m in RE_PRAZO_EXT.finditer(t):
+        v = POR_EXTENSO.get(m.group(1).lower())
+        if v:
+            achados.append((m.start(), v))
+    posicoes = {a for a, _ in achados}
+    for m in RE_NUM_EXT.finditer(t):
+        v = int(m.group(1))
+        if 1 <= v <= 60 and not any(abs(m.start() - a) < 25 for a in posicoes):
+            achados.append((m.start(), v))
+    return [v for _, v in sorted(achados)]
+
+
+def prazo_no_texto(texto: str) -> int | None:
+    """O MENOR prazo fixado no texto (lado seguro); ``calcular_prazo`` avisa quando há mais de um."""
+    todos = prazos_no_texto(texto)
+    return min(todos) if todos else None
 
 
 def prazo_legal(peca: str, cfg: dict) -> tuple[int | None, str | None]:
@@ -127,8 +142,11 @@ def prazo_legal(peca: str, cfg: dict) -> tuple[int | None, str | None]:
 
 # ----------------------------------------------------------------------------- cálculo
 def calcular_prazo(publicado: date, peca: str, n_texto: int | None, n_ia: int | None, tribunal: str,
-                   cfg: dict, ciencia: bool = False, data_retorno: date | None = None) -> Prazo:
+                   cfg: dict, ciencia: bool = False, data_retorno: date | None = None,
+                   n_textos: list[int] | None = None) -> Prazo:
     alertas: list[str] = []
+    if n_textos and len(set(n_textos)) > 1:
+        alertas.append(f"vários prazos no texto ({', '.join(str(x) for x in n_textos)} dias): usado o menor")
     feriados, tem_cal = carregar_calendario(cfg, tribunal)
     if not tem_cal:
         alertas.append(ALERTA_SEM_CALENDARIO)
@@ -137,9 +155,12 @@ def calcular_prazo(publicado: date, peca: str, n_texto: int | None, n_ia: int | 
     padrao = int(cfg.get("prazo_padrao_dias", 5))
 
     if data_retorno:
+        alertas.append(f"data de retorno sugerida pela IA ({data_retorno:%d/%m/%Y}): conferir no teor")
         return Prazo(data_retorno, 0, "retorno", legal, base, alertas)
 
     n = n_texto if n_texto else n_ia
+    if not n_texto and n_ia:
+        alertas.append(f"prazo de {n_ia} dias informado só pela IA (não achado por regra no texto)")
     if n and legal and n != legal:
         dias, origem = min(n, legal), ("texto" if n < legal else "legal")
         alertas.append(f"texto diz {n} dias, lei diz {legal} ({base})")

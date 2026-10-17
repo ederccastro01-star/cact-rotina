@@ -81,3 +81,20 @@ def test_reais_maioria_tem_polo(reais):
     com_polo = [a for a in atos if a.polos]
     assert len(atos) > 20
     assert len(com_polo) / len(atos) >= 0.9
+
+
+def test_intimacoes_separadas_por_parte_sao_um_ato():
+    """TRT18 às vezes manda uma comunicação por parte, mudando só 'DESTINATÁRIO: NOME' (e EXEQUENTE/EXECUTADA)."""
+    base = {"siglaTribunal": "TRT18", "numero_processo": "00009965220265180004", "numeroprocessocommascara": "0000996-52.2026.5.18.0004",
+            "destinatarios": [{"nome": "AMBROZIO MOREIRA DE SOUZA", "polo": "A"}, {"nome": "EQUATORIAL GOIAS DISTRIBUIDORA DE ENERGIA S/A", "polo": "P"}],
+            "destinatarioadvogados": []}
+    t1 = dict(base, id=1, texto="INTIMAÇÃO   DESTINATÁRIO: AMBROZIO MOREIRA DE SOUZA   Ficam as partes intimadas para tomarem ciência, para os fins do art. 884 da CLT, Prazo e fins legais.<br>Intimado(s) / Citado(s)<br> - AMBROZIO MOREIRA DE SOUZA<br>")
+    t2 = dict(base, id=2, texto="INTIMAÇÃO   DESTINATÁRIO: EQUATORIAL GOIAS DISTRIBUIDORA DE ENERGIA S/A   Ficam as partes intimadas para tomarem ciência, para os fins do art. 884 da CLT, Prazo e fins legais.<br>Intimado(s) / Citado(s)<br> - EQUATORIAL GOIAS DISTRIBUIDORA DE ENERGIA S/A<br>")
+    pubs = [{"processo": "0000996-52.2026.5.18.0004", "texto": "x", "item": t1}, {"processo": "0000996-52.2026.5.18.0004", "texto": "x", "item": t2}]
+    atos = agrupar_atos(pubs)
+    assert len(atos) == 1 and atos[0].polos == {"A", "P"} and sorted(atos[0].ids) == ["1", "2"]
+
+
+def test_intimado_sem_casamento_marca_indeterminado():
+    polos = polo_dos_intimados(["FULANO QUE NAO E PARTE"], [{"nome": "AUTOR TESTE", "polo": "A"}, {"nome": "REU TESTE", "polo": "P"}])
+    assert polos == set()

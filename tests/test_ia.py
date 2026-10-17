@@ -33,8 +33,7 @@ def test_parse_lixo_em_volta():
 
 
 def test_parse_sem_json():
-    d = ia.parse_resposta("não consigo")
-    assert d["peca"] == "Manifestação" and d["prazo_dias"] is None
+    assert ia.parse_resposta("não consigo") is None
 
 
 def test_fallback_decisao(sintetico):
@@ -108,7 +107,7 @@ def test_classificar_monta_corpo_opus(cfg, monkeypatch):
     assert corpo["model"] == "claude-opus-5-5"
     assert "thinking" not in corpo
     assert corpo["output_config"] == {"effort": "medium"}
-    assert corpo["max_tokens"] == 1500
+    assert corpo["max_tokens"] >= 4000          # revisão I5: o raciocínio do Opus 5.5 conta no limite
     assert corpo["system"] == ia.PROMPT_PARALELA
     assert "IC" in corpo["messages"][0]["content"] and "RÉU" in corpo["messages"][0]["content"]
     assert capturado["headers"]["x-api-key"] == "sk-teste"
@@ -125,3 +124,39 @@ def test_classificar_refusal_retorna_none(cfg, monkeypatch):
     monkeypatch.setattr(ia, "_post", lambda *a, **k: Resp())
     cfg["anthropic_api_key"] = "sk-teste"
     assert ia.classificar("t", "AUTOR", "AUTOR", [], cfg) is None
+
+
+def test_parse_sem_json_retorna_none():
+    # falha de leitura NÃO pode virar "Manifestação" silenciosa: devolve None para o fallback por regras entrar
+    assert ia.parse_resposta("não consigo") is None
+    assert ia.parse_resposta("{isto não é json}") is None
+
+
+def test_classificar_max_tokens_retorna_none(cfg, monkeypatch):
+    class Resp:
+        status_code = 200
+
+        def json(self):
+            return {"stop_reason": "max_tokens", "content": [{"type": "thinking", "thinking": ""}, {"type": "text", "text": '{"peca": "x"'}]}
+
+    monkeypatch.setattr(ia, "_post", lambda *a, **k: Resp())
+    cfg["anthropic_api_key"] = "sk-teste"
+    assert ia.classificar("t", "AUTOR", "AUTOR", [], cfg) is None
+
+
+def test_classificar_ignora_bloco_thinking_e_max_tokens_folgado(cfg, monkeypatch):
+    capturado = {}
+
+    class Resp:
+        status_code = 200
+
+        def json(self):
+            return {"stop_reason": "end_turn", "content": [{"type": "thinking", "thinking": ""}, {"type": "text", "text": json.dumps(COMPLETO)}]}
+
+    def post(url, headers=None, json=None, timeout=None):
+        capturado["corpo"] = json; return Resp()
+
+    monkeypatch.setattr(ia, "_post", post)
+    cfg["anthropic_api_key"] = "sk-teste"
+    d = ia.classificar("t", "AUTOR", "AUTOR", [], cfg)
+    assert d["peca"] == "Contrarrazões" and capturado["corpo"]["max_tokens"] >= 4000

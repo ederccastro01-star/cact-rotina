@@ -88,8 +88,19 @@ def extrair_intimados(texto: str) -> list[str]:
     return nomes
 
 
-def chave_ato(texto: str) -> str:
+RE_DESTINATARIO = re.compile(r"DESTINAT[ÁA]RIO\(?S?\)?\s*:\s*", re.I)
+RE_PAPEIS = re.compile(r"\b(EXEQUENTES?|EXECUTAD[AO]S?|RECLAMANTES?|RECLAMAD[AO]S?|AUTOR(?:A|ES)?|R[ÉE]US?|EMBARGANTES?|"
+                       r"EMBARGAD[AO]S?|AGRAVANTES?|AGRAVAD[AO]S?|RECORRENTES?|RECORRID[AO]S?|REQUERENTES?|REQUERID[AO]S?)\b", re.I)
+
+
+def chave_ato(texto: str, nomes: list[str] | None = None) -> str:
+    """Texto do ato sem o que muda entre comunicações do MESMO ato: bloco de intimados, 'DESTINATÁRIO:',
+    nomes das partes e palavras de papel (exequente/executada...)."""
     t = RE_BLOCO_INTIMADOS.sub(" ", _texto_plano(texto))
+    t = RE_DESTINATARIO.sub(" ", t)
+    for n in sorted((x for x in (nomes or []) if x and len(x) > 3), key=len, reverse=True):
+        t = re.sub(re.escape(n), " ", t, flags=re.I)
+    t = RE_PAPEIS.sub(" PARTE ", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t[:600]
 
@@ -144,7 +155,8 @@ def agrupar_atos(pubs: list[dict]) -> list[Ato]:
         item = p.get("item") or {}
         norm = re.sub(r"\D", "", str(_get(item, "numero_processo", "numeroProcesso") or p.get("processo") or ""))
         texto = p.get("texto") or ""
-        chave = (norm, chave_ato(_get(item, "texto") or texto))
+        nomes = [d.get("nome", "") for d in (item.get("destinatarios") or [])]
+        chave = (norm, chave_ato(_get(item, "texto") or texto, nomes))
         ato = atos.get(chave)
         if ato is None:
             ato = Ato(

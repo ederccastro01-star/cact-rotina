@@ -43,6 +43,7 @@ TIPOS_ATO = [("acórdão", r"ac[oó]rd[aã]o"), ("sentença", r"senten[cç]a"), 
              ("despacho", r"\bdespacho\b"), ("edital", r"\bedital\b"), ("distribuição", r"distribu[ií]do"),
              ("pauta", r"\bpauta\b|audi[êe]ncia"), ("certidão", r"certid[aã]o"), ("notificação", r".")]
 LIMITE_RESUMO = 350
+MAX_TOKENS = 4000   # o raciocínio interno do Opus 5.5 conta neste limite
 
 PROMPT_PARALELA = """Você é assistente jurídico do CACT (Castro Advocacia & Cálculos Trabalhistas), escritório trabalhista de Goiás. Recebe o texto de uma intimação publicada no DJEN e devolve SÓ um JSON. Polo, destino e data do prazo são calculados por código fora daqui: NÃO decida de quem é o prazo e NÃO calcule datas.
 
@@ -97,17 +98,18 @@ def carregar_vocabulario(cfg: dict) -> list[dict]:
 
 
 # ----------------------------------------------------------------------------- parse
-def parse_resposta(conteudo: str) -> dict:
+def parse_resposta(conteudo: str) -> dict | None:
+    """Dict do contrato, ou None quando a resposta não traz JSON legível (aí entra o fallback por regras)."""
     d = dict(PADROES)
     m = re.search(r"\{.*\}", conteudo or "", re.S)
     if not m:
-        return d
+        return None
     try:
         dados = json.loads(m.group(0))
     except json.JSONDecodeError:
-        return d
+        return None
     if not isinstance(dados, dict):
-        return d
+        return None
     for k in PADROES:
         if k in dados and dados[k] is not None:
             d[k] = dados[k]
@@ -184,7 +186,7 @@ def classificar(texto: str, polo_intimado: str, lado_nosso: str, vocabulario: li
         log = print
     corpo = {
         "model": cfg.get("modelo_claude", "claude-opus-5-5"),
-        "max_tokens": 1500,
+        "max_tokens": MAX_TOKENS,
         "output_config": {"effort": "medium"},
         "system": PROMPT_PARALELA,
         "messages": [{"role": "user", "content": _entrada(texto, polo_intimado, lado_nosso, vocabulario)}],
@@ -199,6 +201,9 @@ def classificar(texto: str, polo_intimado: str, lado_nosso: str, vocabulario: li
         dados = r.json()
         if dados.get("stop_reason") == "refusal":
             log("  ! Claude (Paralela) recusou a classificação; usando fallback.")
+            return None
+        if dados.get("stop_reason") == "max_tokens":
+            log("  ! Claude (Paralela) cortou a resposta (max_tokens); usando fallback.")
             return None
         textos = [b.get("text", "") for b in dados.get("content", []) if b.get("type") == "text"]
         return parse_resposta("\n".join(textos))

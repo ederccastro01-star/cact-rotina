@@ -95,3 +95,21 @@ def test_prazo_legal_tabela(cfg):
     assert prazo_legal("Impugnação aos cálculos (art. 879 §2º)", cfg) == (8, "CLT 879 §2º")
     assert prazo_legal("Manifestação s/ Embargos à Execução", cfg) == (5, "CLT 884")
     assert prazo_legal("Informar dados bancários", cfg) == (None, None)
+
+
+def test_varios_prazos_no_texto_vale_o_menor_com_alerta(cfg):
+    from paralela.prazos import prazos_no_texto
+    txt = "intimem-se as partes no prazo de 15 dias ... impugnação em 5 (cinco) dias ... manifestar em 05 (cinco) dias"
+    assert prazos_no_texto(txt) == [15, 5, 5]
+    p = calcular_prazo(PUB, "Manifestação", prazo_no_texto(txt), None, "TRT18", cfg, n_textos=prazos_no_texto(txt))
+    assert p.dias == 5 and any("vários prazos no texto" in a for a in p.alertas)
+
+
+def test_prazo_so_da_ia_gera_alerta(cfg):
+    p = calcular_prazo(PUB, "Manifestação", None, 10, "TRT18", cfg)
+    assert p.dias == 10 and any("só pela IA" in a for a in p.alertas)
+
+
+def test_data_retorno_gera_alerta(cfg):
+    p = calcular_prazo(PUB, "Acompanhamento: sobrestado", None, None, "TRT1", cfg, data_retorno=date(2027, 2, 16))
+    assert p.origem == "retorno" and any("retorno sugerida pela IA" in a for a in p.alertas)

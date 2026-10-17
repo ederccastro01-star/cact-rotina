@@ -493,7 +493,7 @@ def cruzar(pubs, ref):
     matches = []
     for p in pubs:
         n = norm_proc(p["processo"])
-        if n and n in ref and n not in vistos:
+        if n and n in ref and n not in vistos and (ref[n].get("inPub") or ref[n].get("inPF")):   # Arquivo é só da Paralela
             vistos.add(n)
             mp = dict(p)
             mp["norm"] = n
@@ -616,8 +616,8 @@ def classificar_claude(texto, cfg, cliente=None):
     entrada = (f"Cliente (polo que o escritório representa): {cliente or 'Não informado'}\n\n"
                f"Inteiro teor da intimação:\n{texto[:9000]}")
     corpo = {
-        "model": cfg.get("modelo_claude", "claude-sonnet-4-6"),
-        "max_tokens": 800,
+        "model": cfg.get("modelo_claude", "claude-opus-5-5"),
+        "max_tokens": 4000,          # o raciocínio interno do Opus 5.5 conta neste limite
         "system": PROMPT_SISTEMA,
         "messages": [{"role": "user", "content": entrada}],
     }
@@ -629,7 +629,11 @@ def classificar_claude(texto, cfg, cliente=None):
         if r.status_code != 200:
             log(f"  ! Claude HTTP {r.status_code}: {r.text[:160]}")
             return None
-        conteudo = r.json()["content"][0]["text"]
+        resposta = r.json()
+        if resposta.get("stop_reason") in ("refusal", "max_tokens"):
+            log(f"  ! Claude: stop_reason={resposta.get('stop_reason')}; usando heurística")
+            return None
+        conteudo = "\n".join(b.get("text", "") for b in resposta.get("content", []) if b.get("type") == "text")
         m = re.search(r"\{.*\}", conteudo, re.S)
         if not m:
             return None

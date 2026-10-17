@@ -105,3 +105,17 @@ def test_indexar_le_tres_abas_e_coluna_N(cfg, agenda_amostra):
     assert any(v.inArq and not v.inPub and not v.inPF for v in ref_.values())
     # J normalizada: nunca "REU" sem acento
     assert all(j in {"AUTOR(A)", "RÉU"} for v in ref_.values() for j in v.js)
+
+
+def test_cruzar_nao_inclui_processo_so_do_arquivo():
+    """O Cruzamento (produção) continua cruzando só Publicações e Prazos Feitos; a aba Arquivo é só da Paralela."""
+    import cact_rotina as cr
+    ref = {"1": {"ref": {}, "inPub": False, "inPF": False, "inArq": True}, "2": {"ref": {}, "inPub": True, "inPF": False, "inArq": False}}
+    pubs = [{"processo": "1", "texto": "a", "item": {}}, {"processo": "2", "texto": "b", "item": {}}]
+    import re
+    cr_norm = cr.norm_proc
+    cr.norm_proc = lambda s: str(s)
+    try:
+        assert [m["processo"] for m in cr.cruzar(pubs, ref)] == ["2"]
+    finally:
+        cr.norm_proc = cr_norm
