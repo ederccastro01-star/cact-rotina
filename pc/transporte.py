@@ -16,7 +16,7 @@ import openpyxl
 # colunas da Agenda oficial (spec, Global Constraints): N já existe (Polo conferido); O–S são novas
 COL = {"polo_conferido": 14, "id_djen": 15, "link": 16, "origem": 17, "lote": 18, "conferir": 19}
 # colunas da Paralela (paralela.planilha: A–K + L..X)
-COL_PARALELA = {"decisao": 13, "motivo": 14, "link": 21, "ids": 22, "lote": 23}
+COL_PARALELA = {"destino": 12, "decisao": 13, "motivo": 14, "link": 21, "ids": 22, "lote": 23, "obs": 24, "prazo_calculado": 25}
 DECISOES_QUE_AGENDAM = {"agendar", "corrigir e agendar"}
 ABAS_LIDAS = ("Lançamentos", "Pendentes")
 PRIMEIRA_LINHA = 8
@@ -78,6 +78,9 @@ def ler_paralela(caminho: str) -> list[dict]:
                     "link": str(g(COL_PARALELA["link"]) or ""),
                     "ids": _ids(g(COL_PARALELA["ids"])),
                     "lote": str(g(COL_PARALELA["lote"]) or "").strip(),
+                    "destino": str(g(COL_PARALELA["destino"]) or ""),
+                    "origem": str(g(COL_PARALELA["obs"]) or "").strip(),
+                    "prazo_calculado": g(COL_PARALELA["prazo_calculado"]),
                 })
     finally:
         wb.close()

@@ -21,14 +21,18 @@ from datetime import date, datetime, timedelta
 
 import openpyxl
 
-from pc.excel_com import abrir_livro, coluna_valores, com, fechar_livro, proxima_linha_tabela, set_cell, set_text  # noqa: F401 (monkeypatch nos testes)
-from pc.transporte import (COL, COL_PARALELA, PRIMEIRA_LINHA, Razao, ids_da_agenda, ler_paralela, linhas_para_desfazer,
-                           selecionar, valores_agenda)
+from pc.excel_com import (abrir_livro, coluna_valores, com, fechar_livro, get_range,  # noqa: F401 (monkeypatch nos testes)
+                          proxima_linha_tabela, set_cell, set_text)
+from pc.transporte import (COL, COL_PARALELA, DECISOES_QUE_AGENDAM, PRIMEIRA_LINHA, Razao, ids_da_agenda, ler_paralela,
+                           linhas_para_desfazer, selecionar, valores_agenda)
 
 AQUI = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RE_DATA_ARQ = re.compile(r"CACT - Agenda Paralela (\d{2})-(\d{2})-(\d{4})\.xlsx$")
+RE_DATA_ARQ = re.compile(r"CACT - Agenda Paralela (\d{2})-(\d{2})-(\d{4})( \(reprocessada [^)]*\))?\.xlsx$")
 FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x400000
 ESTAVEL_SEG = 10
+ULTIMA_COLUNA_CONTROLE = 19          # S
+CABECALHOS_CONTROLE = {14: "Polo conferido", 15: "ID DJEN", 16: "Link", 17: "Origem", 18: "Lote", 19: "CONFERIR"}
+ABAS_IDS = ("Publicações", "Prazos Feitos")
 
 
 # ----------------------------------------------------------------------------- config e caminhos
@@ -85,17 +89,50 @@ def avisar(msg: str) -> None:
             pass
 
 
+# ----------------------------------------------------------------------------- trava (um vigia só)
+def obter_trava(caminho: str):
+    """Trava de arquivo (msvcrt): o segundo vigia sai na hora. Solta sozinha se o processo morrer."""
+    import msvcrt
+    fh = open(caminho, "a+")  # noqa: SIM115 — fica aberto enquanto a trava vive
+    try:
+        msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        return fh
+    except OSError:
+        fh.close()
+        return None
+
+
+def soltar_trava(fh) -> None:
+    import msvcrt
+    try:
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+    finally:
+        fh.close()
+
+
 # ----------------------------------------------------------------------------- arquivo do dia
 def _atributos(caminho: str) -> int:
     return getattr(os.stat(caminho), "st_file_attributes", 0)
 
 
+def _hidratar(caminho: str) -> None:
+    """Arquivo só-online do OneDrive: ler 1 byte força o download."""
+    try:
+        with open(caminho, "rb") as fh:
+            fh.read(1)
+    except OSError:
+        pass
+
+
 def arquivo_pronto(caminho: str, agora: float | None = None) -> bool:
-    """Existe, não é só-online (OneDrive), tem conteúdo e o mtime está estável há ESTAVEL_SEG segundos."""
+    """Existe, está baixado (OneDrive), tem conteúdo e o mtime está estável há ESTAVEL_SEG segundos."""
     if not os.path.exists(caminho):
         return False
     if _atributos(caminho) & FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS:
-        return False
+        _hidratar(caminho)
+        if _atributos(caminho) & FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS:
+            return False
     st = os.stat(caminho)
     if st.st_size <= 0:
         return False
@@ -122,12 +159,29 @@ def _paralelas_anteriores(cfg: dict, hoje: date, dias: int) -> list[tuple[date, 
     return sorted(out)
 
 
+def _escrever_linha_paralela(ws_openpyxl, r: int, l: dict, origem: str) -> None:
+    for c, v in enumerate(l["a_k"], start=1):
+        ws_openpyxl.cell(r, c, f'=IF(A{r}="","",A{r})' if c == 2 else v)
+    ws_openpyxl.cell(r, COL_PARALELA["motivo"], l["motivo"]); ws_openpyxl.cell(r, COL_PARALELA["link"], l["link"])
+    ws_openpyxl.cell(r, COL_PARALELA["ids"], ";".join(l["ids"])); ws_openpyxl.cell(r, COL_PARALELA["obs"], origem)
+    if l.get("prazo_calculado") is not None:
+        ws_openpyxl.cell(r, COL_PARALELA["prazo_calculado"], l["prazo_calculado"])
+
+
 def montar_pendentes(cfg: dict, hoje: date, dias: int = 30) -> list[dict]:
-    """Linhas de dias anteriores sem decisão e sem lote → aba Pendentes do arquivo de hoje."""
-    pendentes = []
-    for d, c in _paralelas_anteriores(cfg, hoje, dias):
-        for l in ler_paralela(c):
-            if l["aba"] == "Lançamentos" and not l["decisao"] and not l["lote"]:
+    """Linhas de dias anteriores sem decisão e sem lote → aba Pendentes do arquivo de hoje.
+    Uma linha decidida em QUALQUER aba Pendentes anterior (decisão ou lote) não volta. A origem vai em X
+    (Observações); W (Lote) fica livre para o carimbo do transporte."""
+    pendentes, decididos = [], set()
+    anteriores = _paralelas_anteriores(cfg, hoje, dias)
+    linhas_por_arquivo = {c: ler_paralela(c) for _, c in anteriores}
+    for _, c in anteriores:
+        for l in linhas_por_arquivo[c]:
+            if l["aba"] == "Pendentes" and (l["decisao"] or l["lote"]):
+                decididos.update(l["ids"])
+    for d, c in anteriores:
+        for l in linhas_por_arquivo[c]:
+            if l["aba"] == "Lançamentos" and not l["decisao"] and not l["lote"] and not (set(l["ids"]) & decididos):
                 l["origem"] = f"Paralela {d:%d-%m-%Y} (sem decisão)"
                 pendentes.append(l)
     destino = caminho_paralela(cfg, hoje)
@@ -146,17 +200,15 @@ def montar_pendentes(cfg: dict, hoje: date, dias: int = 30) -> list[dict]:
                     com(set_cell, ws, r, c, v)
             com(set_cell, ws, r, COL_PARALELA["motivo"], l["motivo"])
             com(set_cell, ws, r, COL_PARALELA["link"], l["link"])
-            com(set_cell, ws, r, COL_PARALELA["ids"], ";".join(l["ids"]))
-            com(set_cell, ws, r, COL_PARALELA["lote"], l["origem"])
+            com(set_text, ws, r, COL_PARALELA["ids"], ";".join(l["ids"]))
+            com(set_cell, ws, r, COL_PARALELA["obs"], l["origem"])
+            if l.get("prazo_calculado") is not None:
+                com(set_cell, ws, r, COL_PARALELA["prazo_calculado"], l["prazo_calculado"])
     else:
         wb = openpyxl.load_workbook(destino)
         ws = wb["Pendentes"]
         for i, l in enumerate(pendentes):
-            r = PRIMEIRA_LINHA + i
-            for c, v in enumerate(l["a_k"], start=1):
-                ws.cell(r, c, f'=IF(A{r}="","",A{r})' if c == 2 else v)
-            ws.cell(r, COL_PARALELA["motivo"], l["motivo"]); ws.cell(r, COL_PARALELA["link"], l["link"])
-            ws.cell(r, COL_PARALELA["ids"], ";".join(l["ids"])); ws.cell(r, COL_PARALELA["lote"], l["origem"])
+            _escrever_linha_paralela(ws, PRIMEIRA_LINHA + i, l, l["origem"])
         wb.save(destino)
     return pendentes
 
@@ -171,11 +223,67 @@ def abrir_para_o_advogado(caminho: str, n_pendentes: int = 0) -> None:
     avisar(f"Paralela de hoje: {len(linhas)} linhas, {conferir} CONFERIR, {n_pendentes} pendentes de dias anteriores")
 
 
+# ----------------------------------------------------------------------------- Agenda: colunas de controle
+def _colunas_vazias(ws, c1: int, c2: int) -> bool:
+    ultima = int(com(lambda: ws.Cells(ws.Rows.Count, 5).End(-4162).Row))
+    if ultima < PRIMEIRA_LINHA:
+        return True
+    for linha in com(get_range, ws, PRIMEIRA_LINHA, c1, ultima, c2):
+        if any(v not in (None, "") for v in linha):
+            return False
+    return True
+
+
+def garantir_colunas_controle(ws, cfg: dict, vazias=None) -> None:
+    """Estende a tabela da aba até a coluna S e põe os cabeçalhos N–S. Sem isso, ordenar a tabela
+    (A–K) descolaria ID DJEN e Polo conferido das linhas a que pertencem (revisão C3)."""
+    vazias = vazias or _colunas_vazias
+    tab = com(lambda: ws.ListObjects(cfg.get("tabela_publicacoes", "Tabela1")))
+    colunas = int(com(lambda: tab.Range.Columns.Count))
+    if colunas < ULTIMA_COLUNA_CONTROLE:
+        if not vazias(ws, colunas + 1 if colunas >= 14 else 15, ULTIMA_COLUNA_CONTROLE):
+            raise RuntimeError("colunas O–S da Agenda têm dados fora da tabela; não estendo a tabela sem conferência")
+        linhas = int(com(lambda: tab.Range.Rows.Count))
+        novo = com(tab.Range.Resize, linhas, ULTIMA_COLUNA_CONTROLE)
+        com(tab.Resize, novo)
+    cab = int(com(lambda: tab.Range.Row))
+    for c, titulo in CABECALHOS_CONTROLE.items():
+        cel = ws.Cells(cab, c)
+        if com(lambda: cel.Value) in (None, ""):
+            com(set_cell, ws, cab, c, titulo)
+            try:
+                cel.Font.Bold = True
+            except Exception:  # noqa: BLE001
+                pass
+
+
 # ----------------------------------------------------------------------------- transporte
 def _salvar_razao(razao: Razao, cfg: dict) -> str:
-    caminho = os.path.join(pasta_paralela(cfg), "razao", f"{datetime.now():%Y-%m-%d_%H%M%S}.json")
+    nome = getattr(razao, "_arquivo", None) or f"{datetime.now():%Y-%m-%d_%H%M%S}.json"
+    razao._arquivo = nome  # type: ignore[attr-defined]
+    caminho = os.path.join(pasta_paralela(cfg), "razao", nome)
     razao.salvar(caminho)
     return caminho
+
+
+def ids_ja_lancados(cfg: dict, coluna_fn) -> set[str]:
+    """IDs já na Agenda (Publicações E Prazos Feitos) mais os de todos os razões gravados."""
+    ids: set[str] = set()
+    for aba in ABAS_IDS:
+        try:
+            ids |= ids_da_agenda(coluna_fn(aba))
+        except Exception as e:  # noqa: BLE001 — aba ausente
+            _log(f"não li a coluna ID DJEN de {aba}: {e}")
+    for c in glob.glob(os.path.join(pasta_paralela(cfg), "razao", "*.json")):
+        try:
+            r = Razao.carregar(c)
+        except Exception:  # noqa: BLE001
+            continue
+        if r.tipo == "desfazer":
+            continue
+        for l in r.linhas:
+            ids.update(l.get("ids", []))
+    return ids
 
 
 def _marcar_lote_na_paralela(caminho: str, linhas: list[dict], lote: str) -> None:
@@ -194,34 +302,44 @@ def _marcar_lote_na_paralela(caminho: str, linhas: list[dict], lote: str) -> Non
 
 
 def transportar(cfg: dict, caminho_paralela_: str, agenda: str) -> Razao | None:
-    """Grava na Agenda oficial as linhas com decisão Agendar / Corrigir e agendar. Razão salvo ANTES do Save."""
+    """Grava na Agenda oficial as linhas com decisão Agendar / Corrigir e agendar.
+    Razão 'em andamento' gravado ANTES da primeira escrita; toda chamada COM passa por com()."""
     linhas = ler_paralela(caminho_paralela_)
     xl, wb, fechar = abrir_livro(agenda)
+    sel: list[dict] = []
+    lote = ""
     try:
         ws = com(wb.Worksheets, cfg.get("aba_publicacoes", "Publicações"))
-        ids_agenda = ids_da_agenda(coluna_valores(ws, COL["id_djen"]))
+        ids_agenda = ids_ja_lancados(cfg, lambda aba: coluna_valores(com(wb.Worksheets, aba), COL["id_djen"]))
         sel, avisos = selecionar(linhas, ids_agenda)
         for a in avisos:
             _log(a)
         if not sel:
             _log("nada a transportar")
             return None
+        garantir_colunas_controle(ws, cfg)
         lote = f"Transportado em {datetime.now():%d/%m/%Y %H:%M}"
-        razao = Razao(quando=datetime.now().isoformat(timespec="seconds"), paralela=caminho_paralela_)
-        for l in sel:
+        razao = Razao(quando=datetime.now().isoformat(timespec="seconds"), paralela=caminho_paralela_, tipo="em andamento",
+                      linhas=[{"aba": cfg.get("aba_publicacoes", "Publicações"), "linha_agenda": None, "ids": l["ids"],
+                               "valores": {}, "linha_paralela": l["linha"], "aba_paralela": l["aba"]} for l in sel])
+        _salvar_razao(razao, cfg)
+        for i, l in enumerate(sel):
             r = proxima_linha_tabela(ws, cfg.get("tabela_publicacoes", "Tabela1"))
             valores = valores_agenda(l, lote)
-            for c, v in sorted(valores.items()):
+            # ID DJEN primeiro: se o Excel travar no meio, a próxima passada já reconhece a linha
+            ordem = [COL["id_djen"]] + [c for c in sorted(valores) if c != COL["id_djen"]]
+            for c in ordem:
+                v = valores[c]
                 if v is None:
                     continue
-                if c in (5, COL["id_djen"]):          # processo e ID DJEN sempre como texto
-                    set_text(ws, r, c, v)
+                if c in (5, COL["id_djen"]):
+                    com(set_text, ws, r, c, v)
                 else:
-                    set_cell(ws, r, c, v)
-            set_cell(ws, r, 2, f'=IF(A{r}="","",A{r})')
-            razao.linhas.append({"aba": ws_name(ws, cfg), "linha_agenda": r, "ids": l["ids"],
-                                 "valores": {str(k): (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in valores.items()},
-                                 "linha_paralela": l["linha"], "aba_paralela": l["aba"]})
+                    com(set_cell, ws, r, c, v)
+            com(set_cell, ws, r, 2, f'=IF(A{r}="","",A{r})')
+            razao.linhas[i]["linha_agenda"] = r
+            razao.linhas[i]["valores"] = {str(k): (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in valores.items()}
+        razao.tipo = "transporte"
         caminho_razao = _salvar_razao(razao, cfg)
         com(wb.Save)
         _log(f"{len(sel)} linha(s) gravadas na Agenda; razão: {caminho_razao}")
@@ -233,33 +351,40 @@ def transportar(cfg: dict, caminho_paralela_: str, agenda: str) -> Razao | None:
     return razao
 
 
-def ws_name(ws, cfg) -> str:
-    try:
-        return str(ws.Name)
-    except Exception:  # noqa: BLE001
-        return cfg.get("aba_publicacoes", "Publicações")
-
-
 def desfazer(cfg: dict, razao_path: str) -> int:
     razao = Razao.carregar(razao_path)
     xl, wb, fechar = abrir_livro(caminho_agenda(cfg))
     try:
         ws = com(wb.Worksheets, cfg.get("aba_publicacoes", "Publicações"))
         alvo = linhas_para_desfazer(razao, coluna_valores(ws, COL["id_djen"]))
-        # linha INTEIRA da planilha (a Tabela1 vai só até K; ListRows.Delete deixaria O–S com os IDs órfãos)
+        # linha INTEIRA da planilha (apagar só a linha da tabela deixaria colunas fora dela com IDs órfãos)
         for r in sorted(alvo, reverse=True):
             com(lambda r=r: ws.Rows(r).Delete())
         Razao(quando=datetime.now().isoformat(timespec="seconds"), paralela=razao.paralela, linhas=razao.linhas,
               tipo="desfazer").salvar(razao_path.replace(".json", "_desfeito.json"))
         com(wb.Save)
     finally:
-        ws = None                     # solta os proxies COM antes de fechar
+        ws = None
         fechar_livro(xl, wb, fechar)
+    # o razão original não pode mais contar como "lançado" para a idempotência
+    razao.tipo = "desfazer"
+    razao.salvar(razao_path)
     if os.path.exists(razao.paralela):
         _marcar_lote_na_paralela(razao.paralela, [{"aba": l.get("aba_paralela", "Lançamentos"), "linha": l["linha_paralela"]}
                                                   for l in razao.linhas], "")
     _log(f"desfeitas {len(alvo)} linha(s) do lote {razao.quando}")
     return len(alvo)
+
+
+def paralelas_com_decisao_sem_lote(cfg: dict, hoje: date, dias: int = 7) -> list[str]:
+    """Paralelas de dias anteriores com decisão de agendar ainda não transportada (revisão I2)."""
+    out = []
+    for _, c in _paralelas_anteriores(cfg, hoje, dias):
+        for l in ler_paralela(c):
+            if l["decisao"].strip().lower() in DECISOES_QUE_AGENDAM and not l["lote"]:
+                out.append(c)
+                break
+    return out
 
 
 # ----------------------------------------------------------------------------- vigia
@@ -276,11 +401,22 @@ def _hora(cfg: dict) -> tuple[int, int]:
     return int(h), int(m)
 
 
+def _transportar_seguro(cfg: dict, caminho: str) -> None:
+    try:
+        transportar(cfg, caminho, caminho_agenda(cfg))
+    except Exception as e:  # noqa: BLE001
+        _log(f"ERRO no transporte de {os.path.basename(caminho)}: {e}")
+        avisar(f"erro no transporte para a Agenda: {str(e)[:80]}")
+
+
 def passo_vigia(cfg: dict, dia: date, agora: datetime, estado: Estado) -> None:
+    # decisões antigas que ficaram sem transporte (vigia reiniciado, decisão depois das 23h, erro anterior)
+    for c in paralelas_com_decisao_sem_lote(cfg, dia):
+        _transportar_seguro(cfg, c)
     caminho = caminho_paralela(cfg, dia)
     if not arquivo_pronto(caminho, agora.timestamp()):
         h, m = _hora(cfg)
-        if not estado.avisou_sem_arquivo and (agora.hour, agora.minute) >= (h, m):
+        if not estado.avisou_sem_arquivo and (agora.hour, agora.minute) >= (h, m) and agora.weekday() < 5:
             avisar(f"VM não entregou a Paralela de hoje ({dia:%d/%m}); continuo esperando")
             estado.avisou_sem_arquivo = True
         return
@@ -293,24 +429,27 @@ def passo_vigia(cfg: dict, dia: date, agora: datetime, estado: Estado) -> None:
     mtime = os.stat(caminho).st_mtime
     if mtime > estado.mtime_visto + 1:
         estado.mtime_visto = mtime
-        try:
-            transportar(cfg, caminho, caminho_agenda(cfg))
-        except Exception as e:  # noqa: BLE001
-            _log(f"ERRO no transporte: {e}")
-            avisar(f"erro no transporte para a Agenda: {str(e)[:80]}")
+        _transportar_seguro(cfg, caminho)
 
 
 def vigiar(cfg: dict, dia: date | None = None) -> None:
     dia = dia or date.today()
-    estado = Estado()
-    intervalo = int(_pc(cfg).get("intervalo_min", 15)) * 60
-    _log(f"vigia iniciado para {dia:%d/%m/%Y}")
-    while datetime.now().hour < 23:
-        passo_vigia(cfg, dia, datetime.now(), estado)
-        time.sleep(60 if not estado.abriu else intervalo)
-        if date.today() != dia:
-            break
-    _log("vigia encerrado")
+    trava = obter_trava(os.path.join(AQUI, "pc", "vigia.lock"))
+    if trava is None:
+        _log("já há um vigia em execução; saindo")
+        return
+    try:
+        estado = Estado()
+        intervalo = int(_pc(cfg).get("intervalo_min", 15)) * 60
+        _log(f"vigia iniciado para {dia:%d/%m/%Y}")
+        while datetime.now().hour < 23:
+            passo_vigia(cfg, dia, datetime.now(), estado)
+            time.sleep(60 if not estado.abriu else intervalo)
+            if date.today() != dia:
+                break
+        _log("vigia encerrado")
+    finally:
+        soltar_trava(trava)
 
 
 # ----------------------------------------------------------------------------- conciliação semanal
@@ -326,12 +465,12 @@ def conciliacao_semanal(cfg: dict, hoje: date | None = None) -> str:
                 continue
             if not l["decisao"] and not l["lote"]:
                 sem_decisao.append((d, l))
-            elif l["decisao"].lower() == "descartar" and l["motivo"] == "" and str(l["a_k"][2] or "").lower().find("aguardar") < 0:
+            elif l["decisao"].lower() == "descartar" and l.get("destino", "").startswith("PRAZO DO ESCRIT"):
                 descartes_escritorio.append((d, l))
     linhas = [f"Conciliação da semana {inicio:%d/%m} a {hoje:%d/%m/%Y}",
               f"Sem decisão: {len(sem_decisao)}", *[f"  {d:%d/%m} {l['a_k'][4]} {l['a_k'][2]}" for d, l in sem_decisao],
-              f"Descartes de linha sem alerta (conferir): {len(descartes_escritorio)}",
-              *[f"  {d:%d/%m} {l['a_k'][4]} {l['a_k'][2]}" for d, l in descartes_escritorio]]
+              f"Descartes de PRAZO DO ESCRITÓRIO (conferir): {len(descartes_escritorio)}",
+              *[f"  {d:%d/%m} {l['a_k'][4]} {l['a_k'][2]} | {l['motivo']}" for d, l in descartes_escritorio]]
     caminho = os.path.join(pasta_paralela(cfg), f"conciliacao-{hoje:%Y}-S{hoje.isocalendar()[1]:02d}.txt")
     os.makedirs(os.path.dirname(caminho), exist_ok=True)
     with open(caminho, "w", encoding="utf-8") as fh:

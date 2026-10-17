@@ -69,7 +69,7 @@ def test_montar_pendentes_ignora_decididas(cfg, tmp_path, monkeypatch):
     assert len(pend) == 1 and pend[0]["ids"] == ["2"]
     ws = openpyxl.load_workbook(hoje)["Pendentes"]
     assert ws["E8"].value == "0000001-11.2026.5.18.0001" and ws["V8"].value == "2"
-    assert ws["W8"].value == "Paralela 15-10-2026 (sem decisão)"
+    assert ws["X8"].value == "Paralela 15-10-2026 (sem decisão)" and ws["W8"].value in (None, "")   # origem em X; W fica para o Lote
 
 
 class _Cells:
@@ -129,6 +129,7 @@ def test_transportar_grava_razao_antes_do_save(cfg, tmp_path, monkeypatch):
     monkeypatch.setattr(ap, "abrir_livro", abrir); monkeypatch.setattr(ap, "proxima_linha_tabela", proxima)
     monkeypatch.setattr(ap, "coluna_valores", coluna); monkeypatch.setattr(ap, "set_cell", lambda ws, r, c, v: setattr(ws.Cells(r, c), "Value", v))
     monkeypatch.setattr(ap, "set_text", lambda ws, r, c, v: eventos.append(("set_text", r, c, v)))
+    monkeypatch.setattr(ap, "garantir_colunas_controle", lambda ws_, cfg_: None)
     monkeypatch.setattr(ap, "avisar", lambda m: None); monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None)
     monkeypatch.setattr(ap, "_salvar_razao", lambda razao, cfg_: eventos.append(("razao_salvo", len(razao.linhas))) or "r.json")
     paralela = _paralela(cfg, date(2026, 10, 16), [_linha("1"), _linha("2")], decisoes={8: "Agendar", 9: "Descartar"})

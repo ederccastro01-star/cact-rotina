@@ -15,8 +15,9 @@ from cact_rotina import limpar_texto
 COLUNAS_AGENDA = ["Prazo", "Dia/Sem", "Peça", "Publicado", "Processo ", "Reclamante", "Reclamado", "Advogado ",
                   "Prioridade ", "Cliente", "Despacho"]
 COLUNAS_CONTROLE = ["Destino", "Decisão", "Motivo CONFERIR", "Polo intimado", "Intimado(s)", "Fonte do polo",
-                    "Prazo no texto", "Prazo legal", "Base legal", "Link (teor)", "ID DJEN", "Lote", "Observações"]
-LARGURAS = [10.9, 10.1, 24, 11.4, 26, 30, 34, 26, 12.4, 12, 60, 20, 18, 38, 12, 34, 16, 10, 10, 13, 40, 22, 22, 30]
+                    "Prazo no texto", "Prazo legal", "Base legal", "Link (teor)", "ID DJEN", "Lote", "Observações",
+                    "Prazo calculado"]
+LARGURAS = [10.9, 10.1, 24, 11.4, 26, 30, 34, 26, 12.4, 12, 60, 20, 18, 38, 12, 34, 16, 10, 10, 13, 40, 22, 22, 30, 12]
 DECISOES = '"Agendar,Descartar,Corrigir e agendar"'
 ORDEM_DESTINO = {"PROCESSO NOVO": 0, "PRAZO DO ESCRITÓRIO": 2, "DISPENSADA": 4, "PARTE CONTRÁRIA": 3, "FORA DA AGENDA": 5}
 
@@ -118,14 +119,14 @@ def _escrever(ws, row: int, l: Linha):
     fill = PatternFill("solid", fgColor=cor)
     vals = [l.prazo, None, l.peca, l.publicado, l.processo, l.reclamante, l.reclamado, l.advogado, l.prioridade, l.cliente,
             l.despacho, l.destino, None, l.motivo, l.polo_intimado, l.intimados, l.fonte_polo, l.prazo_texto, l.prazo_legal,
-            l.base_legal, l.link, l.ids, l.lote, l.observacoes]
+            l.base_legal, l.link, l.ids, l.lote, l.observacoes, l.prazo]       # Y = prazo calculado (fica mesmo se A for corrigida)
     for i, v in enumerate(vals, start=1):
         if isinstance(v, str):
             v = limpar_texto(v)
         c = ws.cell(row=row, column=i, value=v)
         c.font = COURIER if i == 5 else ARIAL; c.border = BORDA; c.fill = fill
         c.alignment = ESQ if i in COLS_ESQ else CENTRO
-        if i in (1, 4):
+        if i in (1, 4, 25):
             c.number_format = "dd/mm/yy;@"
         if i == 2:
             c.value = f'=IF(A{row}="","",A{row})'; c.number_format = "ddd"

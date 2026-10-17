@@ -111,6 +111,13 @@ def download(tok, rel_path):
     return r.content
 
 
+def existe(tok, rel_path):
+    """True se o item existe no OneDrive (metadados; 404 = não existe)."""
+    url = f"{GRAPH}/me/drive/root:/{_enc(rel_path)}"
+    r = _com_tentativas(lambda: requests.get(url, headers=_h(tok), timeout=60), ok={200, 404})
+    return r.status_code == 200
+
+
 def upload(tok, rel_path, data):
     """Envia (cria/sobrescreve) um arquivo no OneDrive. Usa upload simples até
     4 MB e sessão de upload para arquivos maiores."""

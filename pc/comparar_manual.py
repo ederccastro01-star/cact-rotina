@@ -41,13 +41,16 @@ def _copia(caminho: str) -> str:
     return tmp
 
 
-def linhas_manuais(agenda: str, inicio: date, fim: date, aba: str = "Publicações") -> list[dict]:
-    """Linhas da Agenda com Publicado no intervalo e Origem (Q) vazia (= lançadas à mão)."""
+def linhas_manuais(agenda: str, inicio: date, fim: date, abas: tuple[str, ...] = ("Publicações", "Prazos Feitos")) -> list[dict]:
+    """Linhas da Agenda (Publicações E Prazos Feitos) com Publicado no intervalo e Origem (Q) vazia (= à mão)."""
     tmp = _copia(agenda)
     wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
     out = []
     try:
-        for row in wb[aba].iter_rows(min_row=8, values_only=True):
+        for aba in abas:
+          if aba not in wb.sheetnames:
+            continue
+          for row in wb[aba].iter_rows(min_row=8, values_only=True):
             if not row or len(row) < 5:
                 continue
             pub = _data(row[3]); proc = _norm(row[4])
@@ -68,8 +71,9 @@ def linhas_paralela(paralelas: list[str]) -> list[dict]:
             if l["aba"] != "Lançamentos":
                 continue
             a = l["a_k"]
-            out.append({"proc": _norm(a[4]), "processo": str(a[4]), "prazo": _data(a[0]), "peca": str(a[2] or ""),
-                        "publicado": _data(a[3]), "destino": None, "arquivo": os.path.basename(c)})
+            prazo_maquina = _data(l.get("prazo_calculado")) or _data(a[0])     # Y: a data da máquina, não a corrigida pelo advogado
+            out.append({"proc": _norm(a[4]), "processo": str(a[4]), "prazo": prazo_maquina, "peca": str(a[2] or ""),
+                        "publicado": _data(a[3]), "destino": l.get("destino"), "arquivo": os.path.basename(c)})
     return out
 
 

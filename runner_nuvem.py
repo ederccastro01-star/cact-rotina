@@ -21,7 +21,10 @@ import tempfile
 from datetime import datetime, timezone, timedelta
 
 import cact_rotina as cr
-import cact_onedrive as od
+try:
+    import cact_onedrive as od
+except ModuleNotFoundError:      # no PC sem 'requests' só se usam as funções puras (testes)
+    od = None
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 
@@ -29,6 +32,14 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 def carregar_config_nuvem():
     with open(os.path.join(AQUI, "config_nuvem.json"), "r", encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def nome_destino_paralela(nome: str, existe: bool, agora: datetime) -> str:
+    """Reprocessamento (CACT_DATA, contingência) nunca sobrescreve a Paralela que o advogado já está marcando."""
+    if not existe:
+        return nome
+    base, ext = os.path.splitext(nome)
+    return f"{base} (reprocessada {agora:%Hh%M}){ext}"
 
 
 def garantir_keepalive():
@@ -104,7 +115,9 @@ def main():
         if nome.lower().startswith("relatorio-detalhado"):
             destino = f"{base}/{base_cfg['subpasta_historico']}/{nome}"
         elif nome.startswith("CACT - Agenda Paralela"):
-            destino = f"{base}/{base_cfg.get('subpasta_paralela', 'CACT - Agenda Paralela')}/{nome}"
+            sub = f"{base}/{base_cfg.get('subpasta_paralela', 'CACT - Agenda Paralela')}"
+            ja_existe = od.existe(tok, f"{sub}/{nome}")
+            destino = f"{sub}/{nome_destino_paralela(nome, ja_existe, datetime.now(timezone(timedelta(hours=-3))))}"
         else:
             destino = f"{base}/{nome}"
         with open(caminho, "rb") as fh:
