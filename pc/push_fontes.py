@@ -41,7 +41,7 @@ TIPOS = [
     ("Publicação/Disponibilização", r"\bPUBLICAD|\bDISPONIBILIZAD"), ("Decurso de prazo", r"\bDECORRIDO O PRAZO\b|\bDECURSO DE PRAZO\b"),
     ("Juntada de petição", r"\bJUNTAD[AO]\b"), ("Conclusão", r"\bCONCLUS[ÃA]O\b|\bCONCLUSOS\b"),
     ("Expedição de documento", r"\bEXPEDI[ÇC][ÃA]O\b|\bEXPEDID"),
-    ("Remessa/Distribuição", r"\bREMESSA\b|\bREMETID|\bRE?DISTRIBU(?:[IÍ]D[OA]S?\b|I[ÇC][ÃA]O\b)"),   # não "DISTRIBUIDORA" (nome de parte)
+    ("Remessa/Distribuição", r"\bREMESSA\b|\bREMETID|\b(?:RE)?DISTRIBU(?:[IÍ]D[OA]S?\b|I[ÇC][ÃA]O\b)"),   # não "DISTRIBUIDORA" (nome de parte)
     ("Arquivamento", r"\bARQUIV"), ("Documento sigiloso", r"\bDOCUMENTO SIGILOSO\b|\bSIGILOSO\b"),
 ]
 _TIPOS = [(nome, re.compile(rx)) for nome, rx in TIPOS]
