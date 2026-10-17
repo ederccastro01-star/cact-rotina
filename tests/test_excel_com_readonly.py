@@ -104,3 +104,9 @@ def test_instancia_ativa_oculta_e_ignorada(monkeypatch):
         Workbooks = []
     monkeypatch.setattr(excel_com, "_get_active_object", lambda: XlOculto())
     assert excel_com._livro_na_instancia_ativa("x.xlsx") is None
+
+
+def test_bloqueado_nao_cria_arquivo(tmp_path):
+    alvo = tmp_path / "nao_existe.xlsx"
+    assert excel_com._bloqueado(str(alvo)) is False
+    assert not alvo.exists()          # open(..., "a") criaria o arquivo

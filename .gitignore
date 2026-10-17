@@ -4,3 +4,4 @@ __pycache__/
 .superpowers/
 tests/fixtures/reais/
 tests/_saida/
+pc/*.log

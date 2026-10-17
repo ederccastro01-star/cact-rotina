@@ -54,6 +54,8 @@ def set_text(ws, r: int, c: int, v) -> None:
 
 def _bloqueado(caminho: str) -> bool:
     """True se outro processo (Excel que acabou de fechar, OneDrive) ainda segura o arquivo."""
+    if not os.path.exists(caminho):
+        return False                      # open(..., "a") criaria o arquivo
     try:
         with open(caminho, "a"):
             return False
