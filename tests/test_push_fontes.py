@@ -334,3 +334,8 @@ def test_reais_jusbrasil_antigo_e_novo():
 def test_reais_encaminhamento_parceiro_outlook():
     regs = pf.extrair(_real("fwd_welitonadvogado_1.txt"))
     assert len(regs) >= 5 and regs[0].processo.endswith(".5.18.0008") and regs[0].remetente == "nao-responda@trt18.jus.br"
+
+
+def test_partes_do_jusbrasil_sem_links():
+    teor = "2ª VARA NÚMERO ÚNICO: 0000006-66.2015.5.18.0010 POLO ATIVO MARCIO EXEMPLO POLO PASSIVO J J MOTORS EIRELI - ME <https://x.y/z> ADVOGADO(A/S) FULANO"
+    assert pf._partes(teor) == ("MARCIO EXEMPLO", "J J MOTORS EIRELI - ME")

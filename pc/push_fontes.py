@@ -313,8 +313,8 @@ def _orgao_jusbrasil(teor: str) -> str:
 
 
 def _partes(texto: str) -> tuple[str, str]:
-    m = re.search(r"POLO ATIVO (.*?) POLO PASSIVO (.*?)(?: ADVOGADO|$)", texto)
-    return (m.group(1).strip(), m.group(2).strip()) if m else ("", "")
+    m = re.search(r"POLO ATIVO (.*?) POLO PASSIVO (.*?)(?: ADVOGADO|$)", URL.sub("", texto))
+    return (_flat(m.group(1)), _flat(m.group(2))) if m else ("", "")
 
 
 def _jusbrasil_antigo(email: Email, rem: str) -> list[Registro]:

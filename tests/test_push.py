@@ -9,7 +9,7 @@ from paralela.planilha import Linha, gerar_paralela
 from pc import agenda_paralela as ap, push
 
 CAB = ["Data do andamento", "Data de autuação", "Nº do processo (CNJ)", "Tribunal", "Ramo da Justiça", "Grau", "Classe judicial",
-       "Órgão / Vara", "Tipo de andamento", "Andamento / Teor", "Autor", "Réu"]
+       "Órgão / Vara", "Tipo de andamento", "Andamento / Teor", "Autor", "Réu", "Origem (sistema)"]
 
 
 def _cfg_pc(cfg, tmp_path):
@@ -25,7 +25,7 @@ def _push(cfg, dia, eventos):
     for ev in eventos:
         data, proc, tipo, teor = ev[:4]
         autor, reu = (ev[4], ev[5]) if len(ev) > 5 else (None, None)
-        ws.append([data, None, proc, "TRT18", "Justiça do Trabalho", "1º Grau", None, "11ª VT", tipo, teor, autor, reu])
+        ws.append([data, None, proc, "TRT18", "Justiça do Trabalho", "1º Grau", None, "11ª VT", tipo, teor, autor, reu, "PJe Push"])
     wb.create_sheet("Resumo").append(["Relatório de Publicações e Andamentos"]); wb.save(caminho)
     return caminho
 
@@ -169,6 +169,7 @@ def test_sem_cobertura_colapsa_por_processo_e_dia_e_nao_duplica(cfg, tmp_path, m
     _cfg_pc(cfg, tmp_path); monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None); monkeypatch.setattr(push, "_livro_aberto_no_excel", lambda c: None)
     _agenda(cfg, [])
     par = ap.caminho_paralela(cfg, date(2026, 10, 16)); gerar_paralela([_linha("1", "0000001-11.2026.5.18.0001")], [], par, date(2026, 10, 16), {"ok": True})
+    gerar_paralela([], [], ap.caminho_paralela(cfg, date(2026, 10, 15)), date(2026, 10, 15), {"ok": True})   # publicação de 15/10 confere-se na Paralela de 14 ou 15
     _push(cfg, date(2026, 10, 16), [
         (datetime(2026, 10, 15, 5, 49), "0000777-77.2026.5.18.0007", "Intimação / Publicação/Disponibilização", "Publicado(a) o(a) intimação em 15/10/2026"),
         (datetime(2026, 10, 15, 5, 49), "0000777-77.2026.5.18.0007", "Intimação / Publicação/Disponibilização", "Disponibilizado(a) o(a) intimação no Diário"),
@@ -176,12 +177,11 @@ def test_sem_cobertura_colapsa_por_processo_e_dia_e_nao_duplica(cfg, tmp_path, m
         (datetime(2026, 10, 14, 9, 0), "0000777-77.2026.5.18.0007", "Intimação / Expedição de documento", "Expedido(a) intimação a(o) X"),                    # anterior à 1ª Paralela (16/10): sem linha
     ])
     r = push.conferir_push(cfg, date(2026, 10, 16))
-    assert sum(1 for e in r if e["situacao"] == "SEM COBERTURA") == 3                       # a aba de conferência continua por evento
-    assert [e["situacao"] for e in r if e["data"] == date(2026, 10, 14)] == ["anterior à Paralela"]
+    assert sum(1 for e in r if e["situacao"] == "SEM COBERTURA") == 4                       # a aba de conferência continua por evento
     for _ in range(2):                                                                      # segunda rodada: idempotente
         ws = openpyxl.load_workbook(par)["Lançamentos"]
         novas = [x for x in ws.iter_rows(min_row=8, values_only=True) if x and x[4] == "0000777-77.2026.5.18.0007"]
-        assert len(novas) == 1
+        assert len(novas) == 2                                                              # 15/10 (3 eventos → 1 linha) e 14/10
         linha15 = [n for n in novas if n[3].date() == date(2026, 10, 15)][0]
         assert "+2 outro" in linha15[10] and linha15[21].startswith("PUSH:")
         push.conferir_push(cfg, date(2026, 10, 16))
@@ -204,3 +204,23 @@ def test_fim_de_semana_sem_paralela_cria_paralela_so_com_push(cfg, tmp_path, mon
     assert "Conferência PUSH" in wb.sheetnames
     novas = [x for x in wb["Lançamentos"].iter_rows(min_row=8, values_only=True) if x and x[4] == "0000567-95.2025.5.18.0012"]
     assert len(novas) == 1 and novas[0][5] == "AFONSO SOARES" and novas[0][21].startswith("PUSH:")
+
+
+def test_publicacao_sem_paralela_do_dia_nao_e_conferivel():
+    """Evento que É publicação (PJe 'Publicado/Disponibilizado' ou Jusbrasil) só se confere contra a Paralela do dia da
+    disponibilização (ev-1) ou do próprio dia; sem esse arquivo, não dá para saber → 'sem Paralela para conferir', sem linha.
+    Intimação expedida pelo sistema (sem DJEN) continua conferida contra Paralelas de ev-1 a ev+4."""
+    ev = [{"norm": "1", "intimacao": True, "data": date(2026, 10, 14), "tipo": "Decisão / Intimação", "origem": "Jusbrasil"},
+          {"norm": "2", "intimacao": True, "data": date(2026, 10, 14), "tipo": "Intimação / Publicação/Disponibilização", "origem": "TRT-Push (legado)"},
+          {"norm": "3", "intimacao": True, "data": date(2026, 10, 14), "tipo": "Intimação / Expedição de documento", "origem": "PJe Push"},
+          {"norm": "4", "intimacao": True, "data": date(2026, 10, 17), "tipo": "Intimação / Publicação/Disponibilização", "origem": "PJe Push"}]
+    r = push.classificar(ev, {}, {}, date(2026, 10, 18), primeira_paralela=date(2026, 10, 15), datas_paralelas={date(2026, 10, 15), date(2026, 10, 16)})
+    assert [e["situacao"] for e in r] == ["sem Paralela para conferir", "sem Paralela para conferir", "SEM COBERTURA", "SEM COBERTURA"]
+    r = push.classificar(ev[3:], {"4": [date(2026, 10, 16)]}, {}, date(2026, 10, 18), primeira_paralela=date(2026, 10, 15), datas_paralelas={date(2026, 10, 16)})
+    assert r[0]["situacao"] == "coberto pela Paralela"
+
+
+def test_ler_push_traz_origem(cfg, tmp_path):
+    _cfg_pc(cfg, tmp_path)
+    c = _push(cfg, date(2026, 10, 16), [(datetime(2026, 10, 15, 9, 0), "0000001-11.2026.5.18.0001", "Intimação", "x")])
+    assert push.ler_push(c)[0]["origem"] == "PJe Push"
