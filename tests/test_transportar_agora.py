@@ -78,3 +78,49 @@ def test_cli_agora(cfg, tmp_path, monkeypatch):
     chamadas = []
     monkeypatch.setattr(ap, "transportar_agora", lambda cfg_, hoje: chamadas.append(hoje) or {"paralelas": 0, "linhas": 0, "erros": 0})
     assert ap.main(["agora"]) == 0 and chamadas == [date.today()]
+
+
+def _pronto(monkeypatch):
+    monkeypatch.setattr(ap, "arquivo_pronto", lambda c, agora=None: True)
+    monkeypatch.setattr(ap, "abrir_para_o_advogado", lambda c, n=0: None)
+    monkeypatch.setattr(ap, "coletar", lambda *a, **k: {"novos": 0, "registros": 0, "caminho": None})
+    monkeypatch.setattr(ap, "verificar_persistencia", lambda *a, **k: [])
+
+
+def test_vigia_nao_transporta_quando_transporte_automatico_desligado(cfg, tmp_path, monkeypatch):
+    """Decisão do advogado (18/10/2026): a Agenda só recebe as linhas quando ele dispara 'Transportar agora'."""
+    _cfg(cfg, tmp_path); cfg["pc"]["transporte_automatico"] = False
+    avisos = []; monkeypatch.setattr(ap, "avisar", lambda m: avisos.append(m)); _pronto(monkeypatch)
+    monkeypatch.setattr(ap, "_transportar_seguro", lambda *a, **k: (_ for _ in ()).throw(AssertionError("não devia transportar sozinho")))
+    _paralela(cfg, date(2026, 10, 15), "Agendar")                       # dia anterior com decisão pendente
+    hoje = _paralela(cfg, date(2026, 10, 18), None)
+    estado = ap.Estado()
+    ap.passo_vigia(cfg, date(2026, 10, 18), date(2026, 10, 18) and __import__("datetime").datetime(2026, 10, 18, 9, 0), estado)   # abre
+    wb = openpyxl.load_workbook(hoje); wb["Lançamentos"].cell(8, COL_PARALELA["decisao"], "Agendar"); wb.save(hoje)      # advogado marca
+    os.utime(hoje, None)
+    ap.passo_vigia(cfg, date(2026, 10, 18), __import__("datetime").datetime(2026, 10, 18, 9, 15), estado)
+    assert not any("gravada" in a for a in avisos)
+
+
+def test_vigia_avisa_decisoes_pendentes_no_horario_configurado(cfg, tmp_path, monkeypatch):
+    from datetime import datetime
+    _cfg(cfg, tmp_path); cfg["pc"]["transporte_automatico"] = False; cfg["pc"]["hora_alerta_transporte"] = "17:30"
+    avisos = []; monkeypatch.setattr(ap, "avisar", lambda m: avisos.append(m)); _pronto(monkeypatch)
+    _paralela(cfg, date(2026, 10, 15), "Agendar"); _paralela(cfg, date(2026, 10, 18), "Corrigir e agendar")
+    estado = ap.Estado()
+    ap.passo_vigia(cfg, date(2026, 10, 18), datetime(2026, 10, 18, 17, 0), estado)
+    assert not any("Transportar agora" in a for a in avisos)
+    ap.passo_vigia(cfg, date(2026, 10, 18), datetime(2026, 10, 18, 17, 31), estado)
+    ap.passo_vigia(cfg, date(2026, 10, 18), datetime(2026, 10, 18, 17, 46), estado)
+    pend = [a for a in avisos if "Transportar agora" in a]
+    assert len(pend) == 1 and "2 decis" in pend[0]
+
+
+def test_vigia_transporta_sozinho_quando_automatico_ligado(cfg, tmp_path, monkeypatch):
+    from datetime import datetime
+    _cfg(cfg, tmp_path)                                                   # padrão: automático
+    monkeypatch.setattr(ap, "avisar", lambda m: None); _pronto(monkeypatch)
+    chamadas = []; monkeypatch.setattr(ap, "_transportar_seguro", lambda cfg_, c, **k: chamadas.append(os.path.basename(c)))
+    p15 = _paralela(cfg, date(2026, 10, 15), "Agendar"); _paralela(cfg, date(2026, 10, 18), None)
+    ap.passo_vigia(cfg, date(2026, 10, 18), datetime(2026, 10, 18, 9, 0), ap.Estado())
+    assert chamadas == [os.path.basename(p15)]

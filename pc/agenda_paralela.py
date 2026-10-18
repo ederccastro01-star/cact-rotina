@@ -537,6 +537,7 @@ class Estado:
     push_feito: bool = False
     coleta_feita: bool = False
     persistencia_em: datetime | None = None
+    avisou_transporte_pendente: bool = False
 
 
 def _hora(cfg: dict) -> tuple[int, int]:
@@ -569,6 +570,25 @@ def _transportar_seguro(cfg: dict, caminho: str, espera_s: int = 120, lancar: bo
         return None
     finally:
         soltar_trava(trava)
+
+
+def transporte_automatico(cfg: dict) -> bool:
+    """True (padrão): o vigia grava na Agenda a cada alteração da Paralela. False: só o gatilho 'Transportar agora'."""
+    return bool(_pc(cfg).get("transporte_automatico", True))
+
+
+def _hora_de(cfg: dict, chave: str, padrao: str) -> tuple[int, int]:
+    h, m = str(_pc(cfg).get(chave, padrao)).split(":")
+    return int(h), int(m)
+
+
+def decisoes_pendentes(cfg: dict, hoje: date, dias: int = 7) -> int:
+    """Linhas com decisão de agendar e sem Lote, na Paralela de hoje e nas dos últimos `dias`."""
+    arquivos_ = [c for _, c in _paralelas_anteriores(cfg, hoje, dias)]
+    if os.path.exists(caminho_paralela(cfg, hoje)):
+        arquivos_.append(caminho_paralela(cfg, hoje))
+    return sum(1 for c in arquivos_ for l in ler_paralela(c)
+               if l["decisao"].strip().lower() in DECISOES_QUE_AGENDAM and not l["lote"])
 
 
 def transportar_agora(cfg: dict, hoje: date) -> dict:
@@ -604,9 +624,19 @@ def passo_vigia(cfg: dict, dia: date, agora: datetime, estado: Estado) -> None:
             verificar_persistencia(cfg, dia)
         except Exception as e:  # noqa: BLE001
             _log(f"ERRO na verificação de persistência: {e}")
-    # decisões antigas que ficaram sem transporte (vigia reiniciado, decisão depois das 23h, erro anterior)
-    for c in paralelas_com_decisao_sem_lote(cfg, dia):
-        _transportar_seguro(cfg, c)
+    # transporte automático (padrão) x só pelo gatilho "Transportar agora" (decisão do advogado em 18/10/2026)
+    auto = transporte_automatico(cfg)
+    if auto:
+        # decisões antigas que ficaram sem transporte (vigia reiniciado, decisão depois das 23h, erro anterior)
+        for c in paralelas_com_decisao_sem_lote(cfg, dia):
+            _transportar_seguro(cfg, c)
+    else:
+        h, m = _hora_de(cfg, "hora_alerta_transporte", "17:30")
+        if not estado.avisou_transporte_pendente and (agora.hour, agora.minute) >= (h, m):
+            estado.avisou_transporte_pendente = True
+            n = decisoes_pendentes(cfg, dia)
+            if n:
+                avisar(f"{n} decisão(ões) marcada(s) aguardam o clique em 'Transportar agora'")
     # coleta do Push (spec §9c): uma vez por dia útil, independente da Paralela; Outlook indisponível → tenta no próximo passo
     if not estado.coleta_feita and agora.weekday() < 5:
         if caminho_push(cfg, dia):
@@ -646,7 +676,8 @@ def passo_vigia(cfg: dict, dia: date, agora: datetime, estado: Estado) -> None:
     mtime = os.stat(caminho).st_mtime
     if mtime > estado.mtime_visto + 1:
         estado.mtime_visto = mtime
-        _transportar_seguro(cfg, caminho)
+        if auto:
+            _transportar_seguro(cfg, caminho)
 
 
 def vigiar(cfg: dict, dia: date | None = None) -> None:
