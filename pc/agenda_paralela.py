@@ -59,11 +59,14 @@ def caminho_agenda(cfg: dict) -> str:
     return os.path.join(_pc(cfg).get("pasta_controladoria", ""), cfg.get("nome_agenda", "CACT - Agenda de Prazos.xlsx"))
 
 
+LOG_PATH = os.path.join(AQUI, "pc", "agenda_paralela.log")      # os testes apontam para um arquivo temporário (conftest)
+
+
 def _log(msg: str) -> None:
     linha = f"[{datetime.now():%d/%m/%Y %H:%M:%S}] {msg}"
     print(linha, flush=True)
     try:
-        with open(os.path.join(AQUI, "pc", "agenda_paralela.log"), "a", encoding="utf-8") as fh:
+        with open(LOG_PATH, "a", encoding="utf-8") as fh:
             fh.write(linha + "\n")
     except OSError:
         pass

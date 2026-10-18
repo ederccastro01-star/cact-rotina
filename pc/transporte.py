@@ -110,6 +110,9 @@ def ids_da_agenda(coluna: list) -> set[str]:
     return out
 
 
+CNJ_RE = re.compile(r"\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}")
+
+
 def selecionar(linhas: list[dict], ids_na_agenda: set[str]) -> tuple[list[dict], list[str]]:
     """Linhas com decisão de agendar, ainda não transportadas e sem id já presente na Agenda."""
     sel, avisos = [], []
@@ -122,6 +125,9 @@ def selecionar(linhas: list[dict], ids_na_agenda: set[str]) -> tuple[list[dict],
         repetidos = [i for i in l.get("ids", []) if i in ids_na_agenda]
         if repetidos:
             avisos.append(f"{l['aba']} linha {l['linha']}: id {', '.join(repetidos)} já existe na Agenda")
+            continue
+        if not CNJ_RE.search(str((l.get("a_k") or [None] * 5)[4] or "")):
+            avisos.append(f"{l['aba']} linha {l['linha']}: preencha o número do processo (coluna E) antes de agendar")
             continue
         sel.append(l)
     return sel, avisos

@@ -86,3 +86,12 @@ def test_ids_normaliza_numero_do_excel():
     # o Excel devolve a célula numérica como float: 759139484.0 tem de casar com "759139484"
     assert tr.ids_da_agenda([759139484.0, "1;2", 3]) == {"759139484", "1", "2", "3"}
     assert tr.linhas_para_desfazer(tr.Razao(quando="x", paralela="p", linhas=[{"ids": ["759139484"]}]), [None, 759139484.0]) == [9]
+
+
+def test_selecionar_exige_numero_de_processo_valido():
+    """Linha de e-mail de parceiro sem número ('(sem número no e-mail)') não pode ir para a Agenda sem o CNJ preenchido."""
+    l = _linha("Agendar", ["PUSH:abc"]); l["a_k"][4] = "(sem número no e-mail)"
+    sel, avisos = tr.selecionar([l], set())
+    assert sel == [] and avisos and "número do processo" in avisos[0]
+    l["a_k"][4] = "0000477-40.2026.5.18.0081"
+    assert tr.selecionar([l], set())[0] == [l]

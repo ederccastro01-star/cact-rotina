@@ -36,6 +36,17 @@ def agenda_amostra():
     return caminho
 
 
+@pytest.fixture(autouse=True)
+def _logs_em_tmp(tmp_path, monkeypatch):
+    """Os testes não escrevem nos logs reais do PC (em 18/10/2026 linhas de pytest confundiram a leitura do log do vigia)."""
+    try:
+        from pc import agenda_paralela, push_coletar
+    except Exception:  # noqa: BLE001 — módulos do PC ausentes (VM)
+        return
+    monkeypatch.setattr(agenda_paralela, "LOG_PATH", str(tmp_path / "agenda_paralela.log"))
+    monkeypatch.setattr(push_coletar, "LOG", str(tmp_path / "push_coletar.log"))
+
+
 @pytest.fixture
 def cfg(tmp_path):
     with open(os.path.join(RAIZ, "config_nuvem.json"), encoding="utf-8") as fh:
