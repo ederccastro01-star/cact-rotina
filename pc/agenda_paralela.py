@@ -284,11 +284,70 @@ def ids_ja_lancados(cfg: dict, coluna_fn) -> set[str]:
             r = Razao.carregar(c)
         except Exception:  # noqa: BLE001
             continue
-        if r.tipo == "desfazer":
+        if r.tipo in ("desfazer", "perdido"):
             continue
         for l in r.linhas:
             ids.update(l.get("ids", []))
     return ids
+
+
+def ids_agenda_por_copia(cfg: dict) -> set[str]:
+    """IDs DJEN presentes na Agenda (Publicações, Prazos Feitos e Arquivo), lidos de uma CÓPIA (CopyFileW)."""
+    from pc import arquivos
+    caminho = caminho_agenda(cfg)
+    if not os.path.exists(caminho):
+        return set()
+    tmp = arquivos.copia_temporaria(caminho, prefixo="ids_")
+    ids: set[str] = set()
+    try:
+        wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
+        for aba in ABAS_IDS + (cfg.get("aba_prazos_feitos_arquivo") or "Prazos Feitos (Arquivo)",):
+            if aba not in wb.sheetnames:
+                continue
+            coluna = [row[0] for row in wb[aba].iter_rows(min_row=PRIMEIRA_LINHA, min_col=COL["id_djen"], max_col=COL["id_djen"], values_only=True)]
+            ids |= ids_da_agenda(coluna)
+        wb.close()
+    finally:
+        arquivos.apagar_copia(tmp)
+    return ids
+
+
+def verificar_persistencia(cfg: dict, hoje: date, ids_fn=None, dias: int = 7) -> list[str]:
+    """Lote transportado cujas linhas sumiram TODAS da Agenda (17/10/2026: a sessão AutoSave do Excel do advogado sobrepôs,
+    na manhã seguinte, a versão gravada pela instância escondida) → razão vira 'perdido' e as linhas da Paralela perdem o
+    carimbo de Lote, para o vigia transportá-las de novo. Lote presente, ainda que em parte, não é tocado (o advogado
+    pode ter apagado uma linha de propósito)."""
+    candidatos = []
+    for c in sorted(glob.glob(os.path.join(pasta_paralela(cfg), "razao", "*.json"))):
+        try:
+            r = Razao.carregar(c)
+            quando = datetime.fromisoformat(str(r.quando)[:19])
+        except Exception:  # noqa: BLE001
+            continue
+        if r.tipo != "transporte" or not r.linhas or quando.date() < hoje - timedelta(days=dias):
+            continue
+        candidatos.append((c, r, quando))
+    if not candidatos:
+        return []
+    na_agenda = (ids_fn or (lambda: ids_agenda_por_copia(cfg)))()
+    perdidos = []
+    for c, r, quando in candidatos:
+        if any(set(l.get("ids", [])) & na_agenda for l in r.linhas):
+            continue
+        r.tipo = "perdido"
+        r.salvar(c)
+        nota = f"lote de {quando:%d/%m/%Y %H:%M} perdido (sumiu da Agenda; conflito de versão do OneDrive?); liberado para novo transporte em {hoje:%d/%m/%Y}"
+        celulas = []
+        for l in r.linhas:
+            if l.get("aba_paralela") and l.get("linha_paralela"):
+                celulas.append((l["aba_paralela"], l["linha_paralela"], COL_PARALELA["lote"], ""))
+                celulas.append((l["aba_paralela"], l["linha_paralela"], COL_PARALELA["obs"], nota))
+        if os.path.exists(r.paralela):
+            _marcar_celulas_na_paralela(r.paralela, celulas)
+        _log(f"PERSISTÊNCIA: {len(r.linhas)} linha(s) do lote {os.path.basename(c)} não estão mais na Agenda; retransporte liberado")
+        avisar(f"{len(r.linhas)} linha(s) agendada(s) em {quando:%d/%m %H:%M} sumiram da Agenda; vou gravá-las de novo")
+        perdidos.append(c)
+    return perdidos
 
 
 def _marcar_celulas_na_paralela(caminho: str, celulas: list[tuple[str, int, int, object]]) -> None:
@@ -477,6 +536,7 @@ class Estado:
     pendentes: list = field(default_factory=list)
     push_feito: bool = False
     coleta_feita: bool = False
+    persistencia_em: datetime | None = None
 
 
 def _hora(cfg: dict) -> tuple[int, int]:
@@ -493,6 +553,13 @@ def _transportar_seguro(cfg: dict, caminho: str) -> None:
 
 
 def passo_vigia(cfg: dict, dia: date, agora: datetime, estado: Estado) -> None:
+    # lotes dos últimos 7 dias que sumiram da Agenda voltam a transportar (a cada 15 min; lê a Agenda por cópia)
+    if estado.persistencia_em is None or agora - estado.persistencia_em >= timedelta(minutes=15):
+        estado.persistencia_em = agora
+        try:
+            verificar_persistencia(cfg, dia)
+        except Exception as e:  # noqa: BLE001
+            _log(f"ERRO na verificação de persistência: {e}")
     # decisões antigas que ficaram sem transporte (vigia reiniciado, decisão depois das 23h, erro anterior)
     for c in paralelas_com_decisao_sem_lote(cfg, dia):
         _transportar_seguro(cfg, c)
