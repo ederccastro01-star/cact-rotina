@@ -7,3 +7,4 @@ tests/_saida/
 pc/*.log
 pc/vigia.lock
 pc/push_ledger.json
+pc/transporte.lock

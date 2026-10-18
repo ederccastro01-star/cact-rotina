@@ -544,12 +544,56 @@ def _hora(cfg: dict) -> tuple[int, int]:
     return int(h), int(m)
 
 
-def _transportar_seguro(cfg: dict, caminho: str) -> None:
+TRAVA_TRANSPORTE = os.path.join(AQUI, "pc", "transporte.lock")
+
+
+def _transportar_seguro(cfg: dict, caminho: str, espera_s: int = 120, lancar: bool = False) -> Razao | None:
+    """Um transporte por vez (vigia e 'Transportar agora' podem coincidir): trava `pc/transporte.lock`, esperando até
+    `espera_s`. Erro vira log + aviso (ou exceção, se `lancar`)."""
+    fim = time.time() + espera_s
+    trava = obter_trava(TRAVA_TRANSPORTE)
+    while trava is None and time.time() < fim:
+        time.sleep(2)
+        trava = obter_trava(TRAVA_TRANSPORTE)
+    if trava is None:
+        _log(f"outro transporte em andamento; {os.path.basename(caminho)} fica para a próxima passada")
+        avisar(f"outro transporte em andamento; {os.path.basename(caminho)} fica para a próxima passada")
+        return None
     try:
-        transportar(cfg, caminho, caminho_agenda(cfg))
+        return transportar(cfg, caminho, caminho_agenda(cfg))
     except Exception as e:  # noqa: BLE001
         _log(f"ERRO no transporte de {os.path.basename(caminho)}: {e}")
         avisar(f"erro no transporte para a Agenda: {str(e)[:80]}")
+        if lancar:
+            raise
+        return None
+    finally:
+        soltar_trava(trava)
+
+
+def transportar_agora(cfg: dict, hoje: date) -> dict:
+    """Gatilho manual do advogado (atalho 'Transportar Paralela agora'): grava na Agenda, já, todas as decisões de
+    agendar ainda sem Lote, da Paralela de hoje e das dos últimos 7 dias. O vigia continua como rede de segurança."""
+    alvos = list(paralelas_com_decisao_sem_lote(cfg, hoje))
+    de_hoje = caminho_paralela(cfg, hoje)
+    if os.path.exists(de_hoje) and any(l["decisao"].strip().lower() in DECISOES_QUE_AGENDAM and not l["lote"] for l in ler_paralela(de_hoje)):
+        alvos.append(de_hoje)
+    res = {"paralelas": 0, "linhas": 0, "erros": 0}
+    for c in alvos:
+        try:
+            r = _transportar_seguro(cfg, c, lancar=True)
+        except Exception:  # noqa: BLE001 — já logado e avisado
+            res["erros"] += 1
+            continue
+        if r is not None and r.linhas:
+            res["paralelas"] += 1
+            res["linhas"] += len(r.linhas)
+    if not alvos:
+        avisar("Transportar agora: nenhuma decisão pendente nas Paralelas")
+    else:
+        avisar(f"Transportar agora: {res['linhas']} linha(s) gravada(s) na Agenda, de {res['paralelas']} Paralela(s)"
+               + (f"; {res['erros']} erro(s), veja pc\\agenda_paralela.log" if res["erros"] else ""))
+    return res
 
 
 def passo_vigia(cfg: dict, dia: date, agora: datetime, estado: Estado) -> None:
@@ -661,8 +705,13 @@ def main(argv=None) -> int:
     sub.add_parser("desfazer").add_argument("razao")
     sub.add_parser("pendentes").add_argument("--dia")
     sub.add_parser("conciliacao")
+    sub.add_parser("agora", help="transporta já todas as decisões pendentes (atalho do advogado)")
     args = ap.parse_args(argv)
     cfg = carregar_cfg()
+    if args.cmd == "agora":
+        r = transportar_agora(cfg, date.today())
+        print(f"{r['linhas']} linha(s) gravada(s) na Agenda, de {r['paralelas']} Paralela(s); erros: {r['erros']}")
+        return 1 if r["erros"] else 0
     if args.cmd == "vigiar":
         dia = datetime.strptime(args.dia, "%d.%m.%Y").date() if args.dia else None
         vigiar(cfg, dia)
