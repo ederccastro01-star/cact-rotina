@@ -85,14 +85,15 @@ def ler_push(caminho: str) -> list[dict]:
         for row in ws.iter_rows(min_row=2, values_only=True):
             if not row or len(row) < 9:
                 continue
-            norm = _norm(row[2])
-            if not norm:
-                continue
+            norm = _norm(row[2]) or ""
+            origem_ = str(row[12] or "").strip() if len(row) > 12 else ""
+            if not norm and not origem_.lower().startswith("e-mail de terceiro"):
+                continue                                       # só e-mail de parceiro pode entrar sem número de processo
             tipo = str(row[8] or "").strip()
             teor = str(row[9] or "").strip() if len(row) > 9 else ""
             data_ev = _data(row[0])
             ident = "PUSH:" + hashlib.sha1(f"{norm}|{data_ev}|{tipo}|{teor[:60]}".encode("utf-8")).hexdigest()[:12]
-            out.append({"data": data_ev, "norm": norm, "processo": _mascara(row[2]), "tribunal": str(row[3] or ""), "tipo": tipo,
+            out.append({"data": data_ev, "norm": norm, "processo": _mascara(row[2]) if norm else "", "tribunal": str(row[3] or ""), "tipo": tipo,
                         "teor": teor, "ident": ident,
                         # Autor/Réu do e-mail do PJe: partes de processo que a Agenda ainda não conhece (encaminhamento de parceiro)
                         "autor": str(row[10] or "").strip() if len(row) > 10 else "", "reu": str(row[11] or "").strip() if len(row) > 11 else "",
@@ -176,9 +177,11 @@ def classificar(eventos: list[dict], paralelas: dict[str, list], agenda: dict[st
         elif _e_terceiro(e):
             # e-mail de parceiro/cliente: novidade só se o processo for desconhecido (não está na Agenda em data alguma
             # nem em Lançamentos de uma Paralela; 'Fora da Agenda' não conta: é o caso que o DJEN viu e nós não temos)
-            conhecido = [(p, z) for p, z in agenda.get(e["norm"], []) if p]
-            em_lanc = [d for d in paralelas.get(e["norm"], []) if d not in (fora or {}).get(e["norm"], [])]
-            if conhecido:
+            conhecido = [(p, z) for p, z in agenda.get(e["norm"], []) if p] if e["norm"] else []
+            em_lanc = [d for d in paralelas.get(e["norm"], []) if d not in (fora or {}).get(e["norm"], [])] if e["norm"] else []
+            if not e["norm"]:
+                e["situacao"], e["detalhe"] = "SEM COBERTURA", "e-mail de parceiro sem número de processo"
+            elif conhecido:
                 p, z = max(conhecido)
                 e["situacao"], e["detalhe"] = "coberto pela Agenda", f"processo conhecido na Agenda (publicado {p:%d/%m/%Y})"
             elif em_lanc:
@@ -224,7 +227,7 @@ def _agrupar_sem_cobertura(eventos: list[dict]) -> list[list[dict]]:
     relatório repete e-mails; o advogado confere o PJe uma vez só. Ordem de chegada preservada."""
     grupos: dict[tuple, list[dict]] = {}
     for e in eventos:
-        grupos.setdefault((e["norm"], e.get("data")), []).append(e)
+        grupos.setdefault((e["norm"] or e["ident"], e.get("data")), []).append(e)
     return list(grupos.values())
 
 
@@ -253,7 +256,7 @@ def _linha_lancamento(cfg: dict, e: dict, ref: dict, dia: date, outros: int = 0)
     else:
         despacho = f"PUSH: {e.get('tipo')} · {teor}" + (f" (+{outros} outro(s) evento(s) do Push no mesmo dia)" if outros else "")
         peca, motivo, fonte = "Verificar intimação no PJe (Push)", MOTIVO_PUSH, "PUSH (e-mail)"
-    return {1: prazo, 3: peca, 4: base, 5: e["processo"],
+    return {1: prazo, 3: peca, 4: base, 5: e["processo"] or "(sem número no e-mail)",
             6: r.get("reclamante") or e.get("autor") or None, 7: r.get("reclamado") or e.get("reu") or None,
             8: r.get("advogado"), 9: "NORMAL", 10: r.get("cliente"), 11: despacho,
             COL_PARALELA["destino"]: "PRAZO DO ESCRITÓRIO", COL_PARALELA["motivo"]: motivo, 15: "?", 17: fonte,

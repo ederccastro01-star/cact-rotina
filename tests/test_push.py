@@ -258,3 +258,21 @@ def test_email_de_terceiro_so_e_novidade_se_o_processo_for_desconhecido():
     r = push.classificar(ev, paralelas, agenda, date(2026, 10, 18), primeira_paralela=date(2026, 10, 15), datas_paralelas={date(2026, 10, 15)}, fora=fora)
     assert [e["situacao"] for e in r] == ["coberto pela Agenda", "coberto pela Paralela", "SEM COBERTURA", "SEM COBERTURA"]
     assert "conhecido" in r[0]["detalhe"]
+
+
+def test_email_de_parceiro_sem_numero_vira_linha_sem_processo(cfg, tmp_path, monkeypatch):
+    _cfg_pc(cfg, tmp_path); monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None); monkeypatch.setattr(push, "_livro_aberto_no_excel", lambda c: None)
+    _agenda(cfg, [])
+    par = ap.caminho_paralela(cfg, date(2026, 10, 16)); gerar_paralela([_linha("1", "0000001-11.2026.5.18.0001")], [], par, date(2026, 10, 16), {"ok": True})
+    caminho = _push(cfg, date(2026, 10, 16), [])
+    wb = openpyxl.load_workbook(caminho); ws = wb["Publicações e Andamentos"]
+    ws.append([datetime(2026, 10, 16, 9, 0), None, None, "", "", "", None, "", "Mensagem de terceiro (sem nº de processo)",
+               "Pedido — Pode me passar um orçamento para a liquidação de um acordo?", "", "", "E-mail de terceiro", datetime(2026, 10, 16, 9, 0), "Pedido", "welitonadvogado@gmail.com", "k1", "Não"])
+    wb.save(caminho)
+    ev = push.ler_push(caminho)
+    assert len(ev) == 1 and ev[0]["norm"] == "" and ev[0]["intimacao"] is True
+    r = push.conferir_push(cfg, date(2026, 10, 16))
+    assert r[0]["situacao"] == "SEM COBERTURA"
+    ws = openpyxl.load_workbook(par)["Lançamentos"]
+    nova = [x for x in ws.iter_rows(min_row=8, values_only=True) if x and x[4] == "(sem número no e-mail)"]
+    assert len(nova) == 1 and "welitonadvogado@gmail.com" in nova[0][10] and nova[0][0].date() == date(2026, 10, 23)

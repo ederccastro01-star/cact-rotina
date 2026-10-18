@@ -22,7 +22,7 @@ from pc.push_relatorio import ABA, gerar_relatorio  # noqa: F401 (ABA reexportad
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "push_coletar.log")
-PADRAO = {"fontes": [], "janela_dias": 7, "arquivar_em": None, "enderecos_proprios": [], "ledger": os.path.join(os.path.dirname(os.path.abspath(__file__)), "push_ledger.json")}
+PADRAO = {"fontes": [], "janela_dias": 7, "arquivar_em": None, "enderecos_proprios": [], "parceiros": [], "ledger": os.path.join(os.path.dirname(os.path.abspath(__file__)), "push_ledger.json")}
 
 
 def _log(msg: str) -> None:
@@ -74,14 +74,15 @@ def coletar(cfg: dict, dia: date, agora: datetime, listar=None, contar_backlog=N
     razao = ler_ledger(pc["ledger"])
     emails = listar(pc["fontes"], desde)
     proprios = {str(x).lower() for x in (pc.get("enderecos_proprios") or [])}
-    elegiveis = [e for e in emails if elegivel(e, proprios)]
+    parceiros = [str(x).lower() for x in (pc.get("parceiros") or [])]
+    elegiveis = [e for e in emails if elegivel(e, proprios, parceiros)]
     novos = [e for e in elegiveis if e.message_id not in razao]
     registros: list[Registro] = []
     por_email: dict[str, int] = {}
     sem_registro: list[str] = []
     falt = 0
     for e in novos:
-        regs = extrair(e)
+        regs = extrair(e, parceiros)
         por_email[e.message_id] = len(regs)
         if regs:
             registros.extend(regs)

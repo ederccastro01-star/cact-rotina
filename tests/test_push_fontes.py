@@ -373,3 +373,28 @@ def test_email_do_proprio_escritorio_nao_e_terceiro():
     em = _email("ederccastro@hotmail.com", "RE: 0000941-04.2026.5.18.0004 EDILON x EQUATORIAL", "Boa tarde, segue a conta.\n", data=datetime(2026, 10, 16, 10, 0))
     assert pf.elegivel(em, proprios={"ederccastro@hotmail.com", "ederccastro01@gmail.com"}) is False
     assert pf.elegivel(em) is True                                                      # sem a lista, continua elegível
+
+
+# --------------------------------------------------------------------------- parceiros: radar pelo remetente
+PARCEIROS = {"@nicoliadvogados.adv.br", "welitonadvogado@gmail.com"}
+
+
+def test_parceiro_sem_cnj_no_assunto_acha_o_numero_no_corpo_ou_no_anexo():
+    em = _email("bruna.ferreira@nicoliadvogados.adv.br", "Orçamento de cálculos", "Dr. Eder, segue o processo 0000591-48.2023.5.06.0006 para orçamento.", data=datetime(2026, 10, 16, 9, 0))
+    assert pf.elegivel(em, parceiros=PARCEIROS) is True and pf.elegivel(em) is False
+    r = pf.extrair(em, parceiros=PARCEIROS)[0]
+    assert r.processo == "0000591-48.2023.5.06.0006" and r.tribunal == "TRT6" and r.origem == pf.ORIGEM_TERCEIRO and r.tipo.startswith("Mensagem de terceiro")
+    em2 = pf.Email("karinne@nicoliadvogados.adv.br", "Novo caso", "Segue anexo para orçamento.", datetime(2026, 10, 16, 9, 0), "<m2>", "x", "Caixa de Entrada",
+                   anexos=["Processo_0000477-40.2026.5.18.0081 (1).pdf"])
+    assert pf.extrair(em2, parceiros=PARCEIROS)[0].processo == "0000477-40.2026.5.18.0081"
+
+
+def test_parceiro_sem_numero_algum_entra_so_se_falar_de_servico():
+    em = _email("welitonadvogado@gmail.com", "Pedido", "Boa tarde! Pode me passar um orçamento para a liquidação de um acordo?", data=datetime(2026, 10, 16, 9, 0))
+    assert pf.elegivel(em, parceiros=PARCEIROS) is True
+    r = pf.extrair(em, parceiros=PARCEIROS)[0]
+    assert r.processo == "" and "sem nº de processo" in r.tipo and r.teor.startswith("Pedido — Boa tarde")
+    social = _email("welitonadvogado@gmail.com", "Feliz aniversário!", "Parabéns, Dr. Eder!", data=datetime(2026, 10, 16, 9, 0))
+    assert pf.elegivel(social, parceiros=PARCEIROS) is False
+    estranho = _email("alguem@qualquer.com", "Orçamento", "quero um orçamento de cálculos", data=datetime(2026, 10, 16, 9, 0))
+    assert pf.elegivel(estranho, parceiros=PARCEIROS) is False                      # não é parceiro e não tem CNJ no assunto

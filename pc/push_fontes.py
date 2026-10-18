@@ -8,7 +8,7 @@ vocabulário das 18 colunas do `Relatorio_PUSH_*.xlsx` que `pc/push.py` já cons
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 CNJ = re.compile(r"\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}")
@@ -25,6 +25,9 @@ ORIGEM_TERCEIRO = "E-mail de terceiro"      # parceiro/cliente escrevendo sobre 
 REMETENTES_JUSBRASIL = ("publicacoes-diarios@jusbrasil.com.br", "andamentos@jusbrasil.com.br")
 MARKETING = ("nao-responda@jusbrasil.com.br", "@descubra.jusbrasil.com.br", "ola@jusbrasil.com.br")
 ASSUNTOS_ELEGIVEIS = ("[PUSH]", "PUSH - ANDAMENTO PROCESSUAL", "NOVAS PUBLICA", "NOVA PUBLICA", "[PROJUDI]")
+# e-mail de parceiro sem número de processo só entra se falar de serviço
+PALAVRAS_SERVICO = ("orçamento", "orcamento", "cálculo", "calculo", "honorári", "honorari", "proposta", "prazo", "processo",
+                    "liquida", "impugna", "períc", "peric", "laudo", "serviço", "servico", "contrarraz", "embargos", "agravo")
 
 RODAPE = ("Para acessar este processo", "ATENÇÃO: este e-mail", "Caso não tenha mais interesse", "Analisar publicação",
           "Atenciosamente", "08006206622", "AVENIDA T1", "Ler publicação na íntegra", "Jus IA ●", "Próximos passos",
@@ -74,6 +77,7 @@ class Email:
     message_id: str
     conta: str = ""
     pasta: str = ""
+    anexos: list = field(default_factory=list)      # nomes dos anexos (o número do processo às vezes só está ali)
 
 
 @dataclass
@@ -205,18 +209,44 @@ def origem(remetente_real_: str, assunto: str, corpo: str) -> str:
     return ORIGEM_OUTROS
 
 
-def elegivel(email: Email, proprios=()) -> bool:
-    """`proprios`: endereços do escritório; resposta nossa numa conversa sobre um processo não é novidade (18/10/2026)."""
+def eh_parceiro(rem: str, parceiros=()) -> bool:
+    """`parceiros`: endereços ("fulano@x.com") ou domínios ("@escritorio.adv.br")."""
+    rem = (rem or "").lower()
+    for p in parceiros:
+        p = str(p).lower().strip()
+        if p and (rem == p or (p.startswith("@") and rem.endswith(p))):
+            return True
+    return False
+
+
+def _cnj_em(email: Email) -> str:
+    """Número do processo: assunto, depois corpo, depois nomes dos anexos."""
+    for texto in (email.assunto or "", email.corpo or "", " ".join(email.anexos or [])):
+        m = CNJ.search(texto)
+        if m:
+            return m.group()
+    return ""
+
+
+def elegivel(email: Email, proprios=(), parceiros=()) -> bool:
+    """`proprios`: endereços do escritório (resposta nossa não é novidade). `parceiros`: remetentes vigiados mesmo sem
+    número de processo no assunto (radar pelo remetente, 18/10/2026)."""
     rem = remetente_real(email.remetente, email.corpo)
     if any(m in rem for m in MARKETING):
         return False
     o = origem(rem, email.assunto, email.corpo)
-    if o == ORIGEM_TERCEIRO and rem in {str(x).lower() for x in proprios}:
+    meus = {str(x).lower() for x in proprios}
+    if o == ORIGEM_TERCEIRO and rem in meus:
         return False
     if o == ORIGEM_JUSBRASIL:
         return rem in REMETENTES_JUSBRASIL
     if o in (ORIGEM_PJE, ORIGEM_LEGADO, ORIGEM_TERCEIRO):
         return True
+    if eh_parceiro(rem, parceiros) and rem not in meus:
+        if _cnj_em(email):
+            return True
+        texto = ((email.assunto or "") + " " + (email.corpo or "")).lower()
+        return any(p in texto for p in PALAVRAS_SERVICO)
     up = (email.assunto or "").upper()
     return rem.endswith("jus.br") or any(a in up for a in ASSUNTOS_ELEGIVEIS)
 
@@ -402,22 +432,24 @@ def tribunal_do_cnj(cnj: str) -> str:
 
 def _terceiro(email: Email, rem: str) -> list[Registro]:
     """E-mail de parceiro/cliente sobre um processo: um registro, com o prazo que o texto informar no teor."""
-    m = CNJ.search(email.assunto or "")
-    processo = m.group() if m else ""
+    processo = _cnj_em(email)
     corpo = limpar_rodape(_flat(URL.sub("", email.corpo or "")))
     teor = (_flat(email.assunto) + " — " + corpo)[:600]
     autor = reu = ""
     mp = re.match(r"^\s*(?:RE|ENC|FW|FWD|RES)?:?\s*(.+?)\s+[xX]\s+(.+?)\s*[-–—]\s*\d{7}-", email.assunto or "")
     if mp:
         autor, reu = _flat(mp.group(1)), _flat(mp.group(2))
-    tipo = "Mensagem de terceiro" + (" / Prazo" if re.search(r"\bprazo\b", email.corpo or "", re.I) else "")
+    tipo = ("Mensagem de terceiro" + ("" if processo else " (sem nº de processo)")
+            + (" / Prazo" if re.search(r"\bprazo\b", email.corpo or "", re.I) else ""))
     return [_base(email, rem, ORIGEM_TERCEIRO, processo=processo, tribunal=tribunal_do_cnj(processo), data=email.data, tipo=tipo,
                   teor=teor, autor=autor, reu=reu)]
 
 
-def extrair(email: Email) -> list[Registro]:
+def extrair(email: Email, parceiros=()) -> list[Registro]:
     rem = remetente_real(email.remetente, email.corpo)
     o = origem(rem, email.assunto, email.corpo)
+    if o == ORIGEM_OUTROS and eh_parceiro(rem, parceiros):
+        o = ORIGEM_TERCEIRO
     if o == ORIGEM_PJE:
         return _pje(email, rem)
     if o == ORIGEM_LEGADO:

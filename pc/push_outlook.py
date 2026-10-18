@@ -140,8 +140,12 @@ def listar(fontes: list[dict], desde: datetime, ns=None) -> list[Email]:
                     continue
                 mid = _message_id(item)
                 _RASTRO[mid] = (str(store.StoreID), str(item.EntryID))
+                try:
+                    anexos = [str(a.FileName) for a in item.Attachments]
+                except Exception:  # noqa: BLE001
+                    anexos = []
                 saida.append(Email(remetente=_remetente(item), assunto=str(item.Subject or ""), corpo=str(item.Body or ""),
-                                   data=_local(item.ReceivedTime), message_id=mid, conta=fonte.get("conta", ""), pasta=nome))
+                                   data=_local(item.ReceivedTime), message_id=mid, conta=fonte.get("conta", ""), pasta=nome, anexos=anexos))
     if fontes and len(ausentes) == len(fontes):
         raise RuntimeError(f"nenhuma das contas {ausentes} está no Outlook (contas: {', '.join(contas_disponiveis(ns))})")
     return saida
