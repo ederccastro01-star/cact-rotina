@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Lote transportado que sumiu da Agenda (17/10/2026: a sessão AutoSave do Excel do advogado sobrepôs, na manhã seguinte,
-a versão gravada pela instância escondida do vigia) tem de voltar a transportar sozinho."""
+"""Lote transportado que sumiu inteiro da Agenda (conflito de versão do OneDrive, por exemplo) tem de voltar a transportar
+sozinho. A busca é pelo ID em todas as abas: linha que só mudou de posição (tabela ordenada) não é perda."""
 import os
 from datetime import date, datetime
 
