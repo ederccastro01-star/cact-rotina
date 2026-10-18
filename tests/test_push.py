@@ -170,3 +170,21 @@ def test_sem_cobertura_colapsa_por_processo_e_dia_e_nao_duplica(cfg, tmp_path, m
         linha15 = [n for n in novas if n[3].date() == date(2026, 10, 15)][0]
         assert "+2 outro" in linha15[10] and linha15[21].startswith("PUSH:")
         push.conferir_push(cfg, date(2026, 10, 16))
+
+
+def test_fim_de_semana_sem_paralela_cria_paralela_so_com_push(cfg, tmp_path, monkeypatch):
+    """Sábado/domingo não têm Paralela da VM. Intimação do Push SEM COBERTURA cria a Paralela do dia só com as linhas
+    do Push, para o vigia abrir; sem intimação nova, nenhum arquivo é criado."""
+    _cfg_pc(cfg, tmp_path); monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None); monkeypatch.setattr(push, "_livro_aberto_no_excel", lambda c: None)
+    _agenda(cfg, [])
+    sab = date(2026, 10, 17)
+    _push(cfg, sab, [(datetime(2026, 10, 16, 23, 40), "0000005-11.2026.5.18.0005", "Documento sigiloso", "só informativo")])
+    assert push.conferir_push(cfg, sab) and not os.path.exists(ap.caminho_paralela(cfg, sab))
+    _push(cfg, sab, [(datetime(2026, 10, 17, 0, 35), "0000567-95.2025.5.18.0012", "Intimação / Expedição de documento", "Expedido(a) intimação a(o) AFONSO", "AFONSO SOARES", "COMURG")])
+    r = push.conferir_push(cfg, sab)
+    par = ap.caminho_paralela(cfg, sab)
+    assert os.path.exists(par) and [e["situacao"] for e in r] == ["SEM COBERTURA"]
+    wb = openpyxl.load_workbook(par)
+    assert "Conferência PUSH" in wb.sheetnames
+    novas = [x for x in wb["Lançamentos"].iter_rows(min_row=8, values_only=True) if x and x[4] == "0000567-95.2025.5.18.0012"]
+    assert len(novas) == 1 and novas[0][5] == "AFONSO SOARES" and novas[0][21].startswith("PUSH:")

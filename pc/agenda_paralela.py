@@ -644,8 +644,9 @@ def passo_vigia(cfg: dict, dia: date, agora: datetime, estado: Estado) -> None:
             n = decisoes_pendentes(cfg, dia)
             if n:
                 avisar(f"{n} decisão(ões) marcada(s) aguardam o clique em 'Transportar agora'")
-    # coleta do Push (spec §9c): uma vez por dia útil, independente da Paralela; Outlook indisponível → tenta no próximo passo
-    if not estado.coleta_feita and agora.weekday() < 5:
+    # coleta do Push (spec §9c): uma vez por dia (fim de semana inclusive, desde 18/10/2026), independente da Paralela;
+    # Outlook indisponível → tenta no próximo passo
+    if not estado.coleta_feita:
         if caminho_push(cfg, dia):
             estado.coleta_feita = True
         else:
@@ -656,6 +657,18 @@ def passo_vigia(cfg: dict, dia: date, agora: datetime, estado: Estado) -> None:
                      + (f" → {os.path.basename(info['caminho'])}" if info.get("caminho") else " (sem relatório)"))
             except Exception as e:  # noqa: BLE001
                 _log(f"ERRO na coleta PUSH (Outlook): {e}")
+    # fim de semana: não há Paralela da VM; a conferência roda logo após a coleta e cria uma Paralela só com o Push se
+    # houver intimação sem cobertura (em dia útil a conferência espera a Paralela da VM, mais abaixo)
+    if estado.coleta_feita and not estado.push_feito and agora.weekday() >= 5 and caminho_push(cfg, dia) \
+            and not os.path.exists(caminho_paralela(cfg, dia)):
+        try:
+            classificados = conferir_push(cfg, dia)
+            estado.push_feito = True
+            sem = sum(1 for e in classificados if e.get("situacao") == "SEM COBERTURA")
+            if sem:
+                avisar(f"Conferência PUSH de fim de semana: {sem} intimação(ões) sem publicação no DJEN; Paralela de {dia:%d/%m} criada")
+        except Exception as e:  # noqa: BLE001
+            _log(f"ERRO na conferência PUSH: {e}")
     caminho = caminho_paralela(cfg, dia)
     if not arquivo_pronto(caminho, agora.timestamp()):
         h, m = _hora(cfg)

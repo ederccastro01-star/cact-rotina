@@ -122,18 +122,20 @@
   "tabela_prazos_feitos": "Tabela2",
   "subpasta_push": "CACT - PUSH Diário",
   "push": {
-    "_comentario": "spec §9c: coleta dos e-mails de Push no Outlook clássico do PC. Adicionar o Gmail ao Outlook para cobrir PJe Push/TRT-Push/Jusbrasil completo. arquivar_em: null = não mover; ex.: 'Tribunais/PUSH'.",
+    "_comentario": "spec §9c: coleta dos e-mails de Push no Outlook clássico do PC, todo dia em que o vigia roda (fim de semana inclusive). As lixeiras entram porque o advogado apaga o e-mail depois de ler: o evento continua auditado (coberto pela Agenda se ele agendou; SEM COBERTURA se não). Pasta ausente é pulada com aviso. arquivar_em: null = não mover; ex.: 'Tribunais/PUSH'.",
     "fontes": [
       {
         "conta": "ederccastro01@gmail.com",
         "pastas": [
-          "Caixa de Entrada"
+          "Caixa de Entrada",
+          "[Gmail]/Lixeira"
         ]
       },
       {
         "conta": "ederccastro@hotmail.com",
         "pastas": [
-          "Caixa de Entrada"
+          "Caixa de Entrada",
+          "Itens Excluídos"
         ]
       }
     ],

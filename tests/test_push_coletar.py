@@ -118,8 +118,8 @@ def test_passo_vigia_coleta_uma_vez_por_dia_util_antes_da_paralela(cfg, tmp_path
     ap.passo_vigia(cfg, date(2026, 10, 19), datetime(2026, 10, 19, 8, 45), estado)
     assert chamadas == [(date(2026, 10, 19), datetime(2026, 10, 19, 8, 30))] and estado.coleta_feita is True
     estado2 = ap.Estado()
-    ap.passo_vigia(cfg, date(2026, 10, 17), datetime(2026, 10, 17, 9, 0), estado2)        # sábado: não coleta
-    assert len(chamadas) == 1
+    ap.passo_vigia(cfg, date(2026, 10, 17), datetime(2026, 10, 17, 9, 0), estado2)        # sábado: coleta também (18/10/2026)
+    assert len(chamadas) == 2
 
 
 def test_passo_vigia_repete_coleta_se_outlook_falhar(cfg, tmp_path, monkeypatch):
@@ -158,3 +158,24 @@ def test_sem_fontes_nao_abre_outlook(cfg, tmp_path):
 
     info = pc_.coletar(cfg, date(2026, 10, 19), AGORA, listar=explode, contar_backlog=explode)
     assert info["emails"] == 0 and info["caminho"] is None and not os.path.exists(cfg["push"]["ledger"])
+
+
+def test_passo_vigia_coleta_tambem_no_fim_de_semana_e_confere_sem_paralela(cfg, tmp_path, monkeypatch):
+    """18/10/2026: intimação do Push de sábado só seria vista na segunda. Agora a coleta roda todo dia em que o vigia
+    roda, e a conferência roda logo depois mesmo sem Paralela do dia (ela cria uma só com o Push, se preciso)."""
+    from pc import agenda_paralela as ap
+    _cfg(cfg, tmp_path); cfg["subpasta_paralela"] = "CACT - Agenda Paralela"; os.makedirs(tmp_path / "CACT - Agenda Paralela", exist_ok=True)
+    monkeypatch.setattr(ap, "avisar", lambda m: None)
+    relatorio = os.path.join(tmp_path, "CACT - PUSH Diário", "Relatorio_PUSH_2026-10-17_0900.xlsx")
+
+    def coletar_falso(cfg_, dia, agora):
+        open(relatorio, "wb").close()
+        return {"novos": 1, "registros": 1, "caminho": relatorio, "elegiveis": 1, "backlog": 0, "sem_registro": []}
+
+    conferencias = []
+    monkeypatch.setattr(ap, "coletar", coletar_falso)
+    monkeypatch.setattr(ap, "conferir_push", lambda cfg_, dia: conferencias.append(dia) or [])
+    estado = ap.Estado()
+    ap.passo_vigia(cfg, date(2026, 10, 17), datetime(2026, 10, 17, 9, 0), estado)        # sábado, sem Paralela
+    ap.passo_vigia(cfg, date(2026, 10, 17), datetime(2026, 10, 17, 9, 15), estado)
+    assert estado.coleta_feita and conferencias == [date(2026, 10, 17)] and estado.push_feito

@@ -127,7 +127,8 @@ def listar(fontes: list[dict], desde: datetime, ns=None) -> list[Email]:
         for nome in fonte.get("pastas") or ["Caixa de Entrada"]:
             pasta = _pasta(store, nome)
             if pasta is None:
-                raise RuntimeError(f"pasta {nome!r} não existe na conta {fonte.get('conta')!r}")
+                _log(f"AVISO: pasta {nome!r} não existe na conta {fonte.get('conta')!r}; pulada")
+                continue
             for item in _itens(pasta, desde):
                 if getattr(item, "Class", 43) != 43:          # olMail
                     continue

@@ -268,7 +268,7 @@ def conferir_push(cfg: dict, dia: date) -> list[dict]:
     from pc.agenda_paralela import _log, caminho_agenda, caminho_paralela
     fonte = caminho_push(cfg, dia)
     paralela_hoje = caminho_paralela(cfg, dia)
-    if not fonte or not os.path.exists(paralela_hoje):
+    if not fonte:
         return []
     eventos = ler_push(fonte)
     paralelas: dict[str, date] = {}
@@ -280,6 +280,14 @@ def conferir_push(cfg: dict, dia: date) -> list[dict]:
     agenda_datas, ref = _agenda(caminho_agenda(cfg)) if os.path.exists(caminho_agenda(cfg)) else ({}, {})
     classificados = classificar(eventos, paralelas, agenda_datas, dia)
     sem_cobertura = [e for e in classificados if e["situacao"] == "SEM COBERTURA"]
+    if not os.path.exists(paralela_hoje):
+        # dia sem Paralela da VM (fim de semana): só vale a pena criar um arquivo se houver intimação a conferir
+        if not sem_cobertura:
+            _log(f"Conferência PUSH {dia:%d/%m}: {len(eventos)} eventos, nenhuma intimação sem cobertura; sem Paralela do dia, nada gravado")
+            return classificados
+        from paralela.planilha import gerar_paralela
+        gerar_paralela([], [], paralela_hoje, dia, {"ok": True, "atos": 0, "processos": 0, "ids": 0})
+        _log(f"Paralela de {dia:%d/%m} criada só com o Push ({len(sem_cobertura)} intimação(ões) sem cobertura)")
 
     aberto = _livro_aberto_no_excel(paralela_hoje)
     if aberto:
