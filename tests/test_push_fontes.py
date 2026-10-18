@@ -339,3 +339,30 @@ def test_reais_encaminhamento_parceiro_outlook():
 def test_partes_do_jusbrasil_sem_links():
     teor = "2ª VARA NÚMERO ÚNICO: 0000006-66.2015.5.18.0010 POLO ATIVO MARCIO EXEMPLO POLO PASSIVO J J MOTORS EIRELI - ME <https://x.y/z> ADVOGADO(A/S) FULANO"
     assert pf._partes(teor) == ("MARCIO EXEMPLO", "J J MOTORS EIRELI - ME")
+
+
+# --------------------------------------------------------------------------- e-mail de terceiro (parceiro) com número de processo
+TERCEIRO = """Boa tarde, Dr. Eder!
+A pedido do Dr. Luís Gustavo Nicoli, encaminho os seguintes autos para solicitação de orçamento referente à elaboração de cálculos trabalhistas:
+Processo_0000477-40.2026.5.18.0081 (1).pdf <https://nicolisociedade.sharepoint.com/x>
+Peço que nos informe o valor dos honorários para nos representar na fase de execução do referido processo.
+Nosso prazo processual encerra-se em 28/10/2026.
+Atenciosamente,
+"""
+
+
+def test_email_de_terceiro_com_cnj_no_assunto_e_elegivel_e_vira_registro():
+    em = _email("lucas.resende@nicoliadvogados.adv.br", "Bianka Vitória da Silva x  Cooperativa Central de Proteção Patrimonial - 0000477-40.2026.5.18.0081", TERCEIRO,
+                data=datetime(2026, 10, 16, 16, 24))
+    assert pf.elegivel(em) is True and pf.origem(pf.remetente_real(em.remetente, em.corpo), em.assunto, em.corpo) == pf.ORIGEM_TERCEIRO
+    regs = pf.extrair(em)
+    assert len(regs) == 1
+    r = regs[0]
+    assert r.processo == "0000477-40.2026.5.18.0081" and r.tribunal == "TRT18" and r.origem == pf.ORIGEM_TERCEIRO
+    assert r.data == datetime(2026, 10, 16, 16, 24) and r.tipo.startswith("Mensagem de terceiro")
+    assert r.autor == "Bianka Vitória da Silva" and r.reu == "Cooperativa Central de Proteção Patrimonial"
+    assert r.teor.startswith("Bianka Vitória da Silva x") and "28/10/2026" in r.teor and "sharepoint" not in r.teor
+
+
+def test_email_comum_sem_cnj_continua_fora():
+    assert pf.elegivel(_email("kelly@escritorio.com.br", "RE: contrato de honorários", "oi, segue minuta")) is False

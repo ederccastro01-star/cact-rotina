@@ -7,8 +7,10 @@ import re
 from datetime import date
 
 from cact_rotina import carregar_feriados, log, prazo_em_dias_uteis
-from paralela.destino import (CONTRARIA, FORA, bloco, decidir_destino, indexar_agenda_completa, indice_nomes, lado_nosso,
-                              segundo_grau, vincular_segundo_grau)
+from paralela.destino import (CONTRARIA, FORA, MOTIVO_NOVO, bloco, decidir_destino, indexar_agenda_completa, indice_nomes,
+                              lado_nosso, segundo_grau, vincular_segundo_grau)
+
+MOTIVO_FORA = "fora da Agenda: processo desconhecido, sem advogado do escritório na comunicação (veio pelo nome/OAB de parceiro)"
 from paralela.ia import carregar_vocabulario, classificar, fallback, formatar_resumo
 from paralela.planilha import Linha, gerar_paralela
 from paralela.polo import agrupar_atos
@@ -96,6 +98,7 @@ def gerar_agenda_paralela(pubs: list[dict], cfg: dict, data_disp: date, usar_ia:
         else:
             dest = decidir_destino(ato, refproc, cfg, cls["peca"])
             dest.rotulo = FORA
+            dest.motivos = [MOTIVO_FORA] + [m for m in dest.motivos if m != MOTIVO_NOVO]
             fora.append(montar_linha(ato, refproc, cfg, publicado, cls, dest))
 
     # conciliação: todo id das publicações do dia aparece em exatamente um ato

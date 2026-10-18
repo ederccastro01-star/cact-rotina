@@ -20,6 +20,7 @@ ORIGEM_PJE = "PJe Push"
 ORIGEM_LEGADO = "TRT-Push (legado)"
 ORIGEM_JUSBRASIL = "Jusbrasil"
 ORIGEM_OUTROS = "Outros"
+ORIGEM_TERCEIRO = "E-mail de terceiro"      # parceiro/cliente escrevendo sobre um processo (CNJ no assunto)
 
 REMETENTES_JUSBRASIL = ("publicacoes-diarios@jusbrasil.com.br", "andamentos@jusbrasil.com.br")
 MARKETING = ("nao-responda@jusbrasil.com.br", "@descubra.jusbrasil.com.br", "ola@jusbrasil.com.br")
@@ -199,6 +200,8 @@ def origem(remetente_real_: str, assunto: str, corpo: str) -> str:
         return ORIGEM_PJE
     if "jusbrasil" in rem:
         return ORIGEM_JUSBRASIL
+    if CNJ.search(assunto or ""):
+        return ORIGEM_TERCEIRO
     return ORIGEM_OUTROS
 
 
@@ -209,7 +212,7 @@ def elegivel(email: Email) -> bool:
     o = origem(rem, email.assunto, email.corpo)
     if o == ORIGEM_JUSBRASIL:
         return rem in REMETENTES_JUSBRASIL
-    if o in (ORIGEM_PJE, ORIGEM_LEGADO):
+    if o in (ORIGEM_PJE, ORIGEM_LEGADO, ORIGEM_TERCEIRO):
         return True
     up = (email.assunto or "").upper()
     return rem.endswith("jus.br") or any(a in up for a in ASSUNTOS_ELEGIVEIS)
@@ -374,6 +377,41 @@ def _outros(email: Email, rem: str) -> list[Registro]:
                   data=email.data, teor=teor[:2000])]
 
 
+_TJ_UF = {"01": "AC", "02": "AL", "03": "AP", "04": "AM", "05": "BA", "06": "CE", "07": "DF", "08": "ES", "09": "GO", "10": "MA",
+          "11": "MT", "12": "MS", "13": "MG", "14": "PA", "15": "PB", "16": "PR", "17": "PE", "18": "PI", "19": "RJ", "20": "RN",
+          "21": "RS", "22": "RO", "23": "RR", "24": "SC", "25": "SE", "26": "SP", "27": "TO"}
+
+
+def tribunal_do_cnj(cnj: str) -> str:
+    """Sigla do tribunal pela estrutura do CNJ: NNNNNNN-DD.AAAA.J.TR.OOOO (J=5 trabalho, 8 estadual, 4 federal)."""
+    m = re.match(r"\d{7}-\d{2}\.\d{4}\.(\d)\.(\d{2})\.\d{4}$", cnj or "")
+    if not m:
+        return ""
+    j, tr = m.group(1), m.group(2)
+    if j == "5":
+        return "TST" if tr == "00" else f"TRT{int(tr)}"
+    if j == "8":
+        return "TJ" + _TJ_UF.get(tr, tr)
+    if j == "4":
+        return "STJ" if tr == "00" else f"TRF{int(tr)}"
+    return {"1": "STF", "3": "STJ", "2": "CNJ"}.get(j, "")
+
+
+def _terceiro(email: Email, rem: str) -> list[Registro]:
+    """E-mail de parceiro/cliente sobre um processo: um registro, com o prazo que o texto informar no teor."""
+    m = CNJ.search(email.assunto or "")
+    processo = m.group() if m else ""
+    corpo = limpar_rodape(_flat(URL.sub("", email.corpo or "")))
+    teor = (_flat(email.assunto) + " — " + corpo)[:600]
+    autor = reu = ""
+    mp = re.match(r"^\s*(?:RE|ENC|FW|FWD|RES)?:?\s*(.+?)\s+[xX]\s+(.+?)\s*[-–—]\s*\d{7}-", email.assunto or "")
+    if mp:
+        autor, reu = _flat(mp.group(1)), _flat(mp.group(2))
+    tipo = "Mensagem de terceiro" + (" / Prazo" if re.search(r"\bprazo\b", email.corpo or "", re.I) else "")
+    return [_base(email, rem, ORIGEM_TERCEIRO, processo=processo, tribunal=tribunal_do_cnj(processo), data=email.data, tipo=tipo,
+                  teor=teor, autor=autor, reu=reu)]
+
+
 def extrair(email: Email) -> list[Registro]:
     rem = remetente_real(email.remetente, email.corpo)
     o = origem(rem, email.assunto, email.corpo)
@@ -383,4 +421,6 @@ def extrair(email: Email) -> list[Registro]:
         return _legado(email, rem)
     if o == ORIGEM_JUSBRASIL:
         return _jusbrasil_antigo(email, rem) if "Termos encontrados" in email.corpo else _jusbrasil_novo(email, rem)
+    if o == ORIGEM_TERCEIRO:
+        return _terceiro(email, rem)
     return _outros(email, rem)

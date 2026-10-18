@@ -30,6 +30,7 @@ def test_gerar_sintetico_sem_ia(sintetico, cfg, tmp_path, monkeypatch):
     wb = openpyxl.load_workbook(caminho)
     lanc = _linhas(wb["Lançamentos"]); fora = _linhas(wb["Fora da Agenda"])
     assert len(lanc) == 4 and len(fora) == 1
+    assert fora[0][COL["motivo"] - 1].startswith("fora da Agenda") and "OAB do escritório" not in fora[0][COL["motivo"] - 1].split(";")[0]
     por_ids = {r[COL["ids"] - 1]: r for r in lanc}
     a1 = por_ids["9001;9004"]
     assert a1[COL["destino"] - 1] == "PRAZO DO ESCRITÓRIO"

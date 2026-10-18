@@ -224,3 +224,23 @@ def test_ler_push_traz_origem(cfg, tmp_path):
     _cfg_pc(cfg, tmp_path)
     c = _push(cfg, date(2026, 10, 16), [(datetime(2026, 10, 15, 9, 0), "0000001-11.2026.5.18.0001", "Intimação", "x")])
     assert push.ler_push(c)[0]["origem"] == "PJe Push"
+
+
+def test_mensagem_de_terceiro_sem_cobertura_vira_linha_com_prazo_do_texto(cfg, tmp_path, monkeypatch):
+    """E-mail de parceiro sobre processo que não está na Agenda (16/10/2026, Nicoli): entra como CONFERIR com o prazo que o
+    próprio e-mail informa ('encerra-se em 28/10/2026'); sem data no texto, 5 dias úteis."""
+    _cfg_pc(cfg, tmp_path); monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None); monkeypatch.setattr(push, "_livro_aberto_no_excel", lambda c: None)
+    _agenda(cfg, [])
+    par = ap.caminho_paralela(cfg, date(2026, 10, 16)); gerar_paralela([_linha("1", "0000001-11.2026.5.18.0001")], [], par, date(2026, 10, 16), {"ok": True})
+    caminho = _push(cfg, date(2026, 10, 16), [])
+    wb = openpyxl.load_workbook(caminho); ws = wb["Publicações e Andamentos"]
+    ws.append([datetime(2026, 10, 16, 16, 24), None, "0000477-40.2026.5.18.0081", "TRT18", "Justiça do Trabalho", "", None, "", "Mensagem de terceiro / Prazo",
+               "Bianka x Cooperativa - 0000477-40.2026.5.18.0081 — encaminho os autos para orçamento. Nosso prazo processual encerra-se em 28/10/2026.",
+               "Bianka Vitória da Silva", "Cooperativa Central", "E-mail de terceiro", datetime(2026, 10, 16, 16, 24), "Bianka x Cooperativa", "lucas@nicoli.adv.br", "abc", "Não"])
+    wb.save(caminho)
+    r = push.conferir_push(cfg, date(2026, 10, 16))
+    assert r[0]["intimacao"] is True and r[0]["situacao"] == "SEM COBERTURA"
+    ws = openpyxl.load_workbook(par)["Lançamentos"]
+    nova = [x for x in ws.iter_rows(min_row=8, values_only=True) if x and x[4] == "0000477-40.2026.5.18.0081"][0]
+    assert nova[0].date() == date(2026, 10, 28) and nova[2].startswith("Verificar e-mail de terceiro") and nova[5] == "Bianka Vitória da Silva"
+    assert "lucas@nicoli.adv.br" in nova[10] and "28/10/2026" in nova[10]

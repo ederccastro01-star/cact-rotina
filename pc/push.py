@@ -25,7 +25,9 @@ from pc.transporte import COL_PARALELA, PRIMEIRA_LINHA
 CNJ = re.compile(r"\d{7}-?\d{2}\.?\d{4}\.?\d\.?\d{2}\.?\d{4}")
 ABA_CONFERENCIA = "Conferência PUSH"
 PRAZO_PADRAO = 5
-TIPOS_INTIMACAO = ("INTIMA", "PUBLICA", "CITA")
+TIPOS_INTIMACAO = ("INTIMA", "PUBLICA", "CITA", "MENSAGEM DE TERCEIRO")
+MOTIVO_TERCEIRO = "e-mail de terceiro sobre processo fora da Agenda: conferir pedido, lado e prazo"
+DATA_RE = re.compile(r"\b(\d{2})/(\d{2})/(\d{4})\b")
 SITUACOES = ("SEM COBERTURA", "coberto pela Paralela", "coberto pela Agenda", "anterior à Paralela", "sem Paralela para conferir", "informativo")
 CAB_CONF = ["Data", "Processo", "Tribunal", "Tipo de andamento", "Situação", "Detalhe", "Teor (início)"]
 MOTIVO_PUSH = "intimação pelo PJe (Push) sem publicação no DJEN: conferir teor e prazo no PJe"
@@ -95,6 +97,7 @@ def ler_push(caminho: str) -> list[dict]:
                         # Autor/Réu do e-mail do PJe: partes de processo que a Agenda ainda não conhece (encaminhamento de parceiro)
                         "autor": str(row[10] or "").strip() if len(row) > 10 else "", "reu": str(row[11] or "").strip() if len(row) > 11 else "",
                         "origem": str(row[12] or "").strip() if len(row) > 12 else "",
+                        "remetente": str(row[15] or "").strip() if len(row) > 15 else "",
                         # pauta de julgamento/audiência não é intimação com prazo: fica só na conferência, para conhecimento
                         "intimacao": any(t in tipo.upper() for t in TIPOS_INTIMACAO) and "PAUTA" not in tipo.upper()})
     finally:
@@ -209,16 +212,35 @@ def _agrupar_sem_cobertura(eventos: list[dict]) -> list[list[dict]]:
     return list(grupos.values())
 
 
+def _prazo_no_texto(teor: str, base: date) -> date | None:
+    """Primeira data dd/mm/aaaa posterior ao evento citada no texto (e-mail de parceiro: 'prazo encerra-se em 28/10/2026')."""
+    datas = []
+    for d, m, a in DATA_RE.findall(teor or ""):
+        try:
+            x = date(int(a), int(m), int(d))
+        except ValueError:
+            continue
+        if x > base:
+            datas.append(x)
+    return min(datas) if datas else None
+
+
 def _linha_lancamento(cfg: dict, e: dict, ref: dict, dia: date, outros: int = 0) -> dict[int, object]:
     base = e.get("data") or dia
-    prazo = _dias_uteis(cfg, base, PRAZO_PADRAO, e.get("tribunal", ""))
+    terceiro = str(e.get("origem") or "").lower().startswith("e-mail de terceiro")
+    prazo = (_prazo_no_texto(e.get("teor") or "", base) if terceiro else None) or _dias_uteis(cfg, base, PRAZO_PADRAO, e.get("tribunal", ""))
     r = ref.get(e["norm"], {})
-    teor = re.sub(r"\s+", " ", e.get("teor") or "")[:250]
-    despacho = f"PUSH: {e.get('tipo')} · {teor}" + (f" (+{outros} outro(s) evento(s) do Push no mesmo dia)" if outros else "")
-    return {1: prazo, 3: "Verificar intimação no PJe (Push)", 4: base, 5: e["processo"],
+    teor = re.sub(r"\s+", " ", e.get("teor") or "")[:400 if terceiro else 250]
+    if terceiro:
+        despacho = f"E-MAIL de {e.get('remetente') or 'terceiro'} em {base:%d/%m}: {teor}"
+        peca, motivo, fonte = "Verificar e-mail de terceiro sobre o processo", MOTIVO_TERCEIRO, "E-MAIL (terceiro)"
+    else:
+        despacho = f"PUSH: {e.get('tipo')} · {teor}" + (f" (+{outros} outro(s) evento(s) do Push no mesmo dia)" if outros else "")
+        peca, motivo, fonte = "Verificar intimação no PJe (Push)", MOTIVO_PUSH, "PUSH (e-mail)"
+    return {1: prazo, 3: peca, 4: base, 5: e["processo"],
             6: r.get("reclamante") or e.get("autor") or None, 7: r.get("reclamado") or e.get("reu") or None,
             8: r.get("advogado"), 9: "NORMAL", 10: r.get("cliente"), 11: despacho,
-            COL_PARALELA["destino"]: "PRAZO DO ESCRITÓRIO", COL_PARALELA["motivo"]: MOTIVO_PUSH, 15: "?", 17: "PUSH (e-mail)",
+            COL_PARALELA["destino"]: "PRAZO DO ESCRITÓRIO", COL_PARALELA["motivo"]: motivo, 15: "?", 17: fonte,
             18: None, COL_PARALELA["ids"]: e["ident"], COL_PARALELA["prazo_calculado"]: prazo}
 
 
