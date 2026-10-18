@@ -61,21 +61,35 @@ def test_pauta_publicada_nao_e_intimacao(cfg, tmp_path):
     assert push.caminho_push(cfg, date(2026, 10, 16)) == c
 
 
-def test_classificar_cobertura():
-    ev = [{"norm": "1", "intimacao": True}, {"norm": "2", "intimacao": True}, {"norm": "3", "intimacao": True}, {"norm": "4", "intimacao": False}]
-    paralelas = {"1": date(2026, 10, 16)}
-    agenda = {"2": [(date(2026, 10, 15), date(2026, 10, 24))]}          # (publicado, prazo)
-    r = push.classificar(ev, paralelas, agenda, date(2026, 10, 16))
-    assert r[0]["situacao"] == "coberto pela Paralela" and "16/10" in r[0]["detalhe"]
-    assert r[1]["situacao"] == "coberto pela Agenda" and "24/10" in r[1]["detalhe"]
+def test_classificar_cobertura_relativa_a_data_do_evento():
+    """Cobertura pela Paralela: o processo aparece numa Paralela datada entre ev-1 e ev+4 (a publicação do DJEN sai no
+    dia da intimação ou nos seguintes), não só na de hoje/ontem (18/10/2026: 8 falsos SEM COBERTURA numa rodada de 29)."""
+    ev = [{"norm": "1", "intimacao": True, "data": date(2026, 10, 14)}, {"norm": "2", "intimacao": True, "data": date(2026, 10, 16)},
+          {"norm": "3", "intimacao": True, "data": date(2026, 10, 16)}, {"norm": "4", "intimacao": False, "data": date(2026, 10, 16)},
+          {"norm": "5", "intimacao": True, "data": date(2026, 10, 16)}]
+    paralelas = {"1": [date(2026, 10, 15)], "5": [date(2026, 10, 10)]}                        # 5: Paralela antiga demais
+    agenda = {"2": [(date(2026, 10, 21), date(2026, 10, 30))]}                               # publicado DEPOIS do evento (anotação manual)
+    r = push.classificar(ev, paralelas, agenda, date(2026, 10, 18), primeira_paralela=date(2026, 10, 15))
+    assert r[0]["situacao"] == "coberto pela Paralela" and "15/10" in r[0]["detalhe"]
+    assert r[1]["situacao"] == "coberto pela Agenda" and "30/10" in r[1]["detalhe"]
     assert r[2]["situacao"] == "SEM COBERTURA"
-    assert r[3]["situacao"] == "informativo"                              # documento sigiloso não é intimação
+    assert r[3]["situacao"] == "informativo"
+    assert r[4]["situacao"] == "SEM COBERTURA"
+
+
+def test_evento_anterior_ao_inicio_das_paralelas_nao_vira_linha():
+    """Rodada inicial lê 7 dias de e-mail; intimação de antes da primeira Paralela foi tratada à mão na época."""
+    ev = [{"norm": "9", "intimacao": True, "data": date(2026, 10, 13)}]
+    r = push.classificar(ev, {}, {}, date(2026, 10, 18), primeira_paralela=date(2026, 10, 15))
+    assert r[0]["situacao"] == "anterior à Paralela"
+    r = push.classificar(ev, {}, {}, date(2026, 10, 18), primeira_paralela=None)             # nenhuma Paralela ainda: não dá para conferir
+    assert r[0]["situacao"] == "anterior à Paralela"
 
 
 def test_agenda_antiga_nao_cobre():
-    ev = [{"norm": "2", "intimacao": True}]
+    ev = [{"norm": "2", "intimacao": True, "data": date(2026, 10, 16)}]
     agenda = {"2": [(date(2026, 9, 1), date(2026, 9, 10))]}
-    assert push.classificar(ev, {}, agenda, date(2026, 10, 16))[0]["situacao"] == "SEM COBERTURA"
+    assert push.classificar(ev, {}, agenda, date(2026, 10, 18), primeira_paralela=date(2026, 10, 15))[0]["situacao"] == "SEM COBERTURA"
 
 
 def test_conferir_push_cria_aba_e_linha_sem_cobertura(cfg, tmp_path, monkeypatch):
@@ -159,14 +173,15 @@ def test_sem_cobertura_colapsa_por_processo_e_dia_e_nao_duplica(cfg, tmp_path, m
         (datetime(2026, 10, 15, 5, 49), "0000777-77.2026.5.18.0007", "Intimação / Publicação/Disponibilização", "Publicado(a) o(a) intimação em 15/10/2026"),
         (datetime(2026, 10, 15, 5, 49), "0000777-77.2026.5.18.0007", "Intimação / Publicação/Disponibilização", "Disponibilizado(a) o(a) intimação no Diário"),
         (datetime(2026, 10, 15, 5, 49), "0000777-77.2026.5.18.0007", "Intimação / Publicação/Disponibilização", "Publicado(a) o(a) intimação em 15/10/2026"),   # e-mail repetido
-        (datetime(2026, 10, 14, 9, 0), "0000777-77.2026.5.18.0007", "Intimação / Expedição de documento", "Expedido(a) intimação a(o) X"),                    # outro dia → outra linha
+        (datetime(2026, 10, 14, 9, 0), "0000777-77.2026.5.18.0007", "Intimação / Expedição de documento", "Expedido(a) intimação a(o) X"),                    # anterior à 1ª Paralela (16/10): sem linha
     ])
     r = push.conferir_push(cfg, date(2026, 10, 16))
-    assert sum(1 for e in r if e["situacao"] == "SEM COBERTURA") == 4                       # a aba de conferência continua por evento
+    assert sum(1 for e in r if e["situacao"] == "SEM COBERTURA") == 3                       # a aba de conferência continua por evento
+    assert [e["situacao"] for e in r if e["data"] == date(2026, 10, 14)] == ["anterior à Paralela"]
     for _ in range(2):                                                                      # segunda rodada: idempotente
         ws = openpyxl.load_workbook(par)["Lançamentos"]
         novas = [x for x in ws.iter_rows(min_row=8, values_only=True) if x and x[4] == "0000777-77.2026.5.18.0007"]
-        assert len(novas) == 2
+        assert len(novas) == 1
         linha15 = [n for n in novas if n[3].date() == date(2026, 10, 15)][0]
         assert "+2 outro" in linha15[10] and linha15[21].startswith("PUSH:")
         push.conferir_push(cfg, date(2026, 10, 16))
@@ -178,6 +193,7 @@ def test_fim_de_semana_sem_paralela_cria_paralela_so_com_push(cfg, tmp_path, mon
     _cfg_pc(cfg, tmp_path); monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None); monkeypatch.setattr(push, "_livro_aberto_no_excel", lambda c: None)
     _agenda(cfg, [])
     sab = date(2026, 10, 17)
+    gerar_paralela([], [], ap.caminho_paralela(cfg, date(2026, 10, 16)), date(2026, 10, 16), {"ok": True})     # já existe Paralela (sexta)
     _push(cfg, sab, [(datetime(2026, 10, 16, 23, 40), "0000005-11.2026.5.18.0005", "Documento sigiloso", "só informativo")])
     assert push.conferir_push(cfg, sab) and not os.path.exists(ap.caminho_paralela(cfg, sab))
     _push(cfg, sab, [(datetime(2026, 10, 17, 0, 35), "0000567-95.2025.5.18.0012", "Intimação / Expedição de documento", "Expedido(a) intimação a(o) AFONSO", "AFONSO SOARES", "COMURG")])
