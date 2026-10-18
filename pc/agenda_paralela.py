@@ -313,10 +313,10 @@ def ids_agenda_por_copia(cfg: dict) -> set[str]:
 
 
 def verificar_persistencia(cfg: dict, hoje: date, ids_fn=None, dias: int = 7) -> list[str]:
-    """Lote transportado cujas linhas sumiram TODAS da Agenda (17/10/2026: a sessão AutoSave do Excel do advogado sobrepôs,
-    na manhã seguinte, a versão gravada pela instância escondida) → razão vira 'perdido' e as linhas da Paralela perdem o
-    carimbo de Lote, para o vigia transportá-las de novo. Lote presente, ainda que em parte, não é tocado (o advogado
-    pode ter apagado uma linha de propósito)."""
+    """Lote transportado cujas linhas sumiram TODAS da Agenda (conflito de versão do OneDrive/AutoSave, por exemplo) → razão
+    vira 'perdido' e as linhas da Paralela perdem o carimbo de Lote, para o vigia transportá-las de novo. Lote presente,
+    ainda que em parte, não é tocado (o advogado pode ter apagado uma linha de propósito). Procura pelo ID em todas as
+    abas, nunca pela posição: em 18/10/2026 uma linha "sumida" só tinha mudado de lugar com a ordenação da tabela."""
     candidatos = []
     for c in sorted(glob.glob(os.path.join(pasta_paralela(cfg), "razao", "*.json"))):
         try:
