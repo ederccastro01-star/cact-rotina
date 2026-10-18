@@ -19,7 +19,9 @@ if ($LASTEXITCODE -ne 0) { Write-Host "ERRO: nao criei a tarefa '$nome'." -Foreg
 # Notebook na bateria e PC que estava desligado na hora: a tarefa deve rodar mesmo assim.
 $ajustes = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
     -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 16)
-Set-ScheduledTask -TaskName $nome -Settings $ajustes | Out-Null
+# Acao direta no pythonw (sem "cmd /c"): o cmd abria uma janela preta por um instante a cada 15 min (18/10/2026).
+$acao = New-ScheduledTaskAction -Execute $python -Argument "-m pc.agenda_paralela vigiar" -WorkingDirectory $clone
+Set-ScheduledTask -TaskName $nome -Settings $ajustes -Action $acao | Out-Null
 
 # Gatilho "ao fazer logon" e opcional e exige privilegio de administrador; se falhar, segue sem ele.
 schtasks /Create /TN "CACT - Agenda Paralela" /SC ONLOGON /TR "cmd /c cd /d `"$clone`" && $cmd" /RL LIMITED /F 2>$null | Out-Null
