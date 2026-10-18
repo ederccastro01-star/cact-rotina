@@ -106,12 +106,12 @@ def ler_push(caminho: str) -> list[dict]:
     return out
 
 
-def _procs_paralela(caminho: str) -> set[str]:
+def _procs_paralela(caminho: str, abas=("Lançamentos", "Fora da Agenda")) -> set[str]:
     tmp = _copia(caminho)
     wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
     out: set[str] = set()
     try:
-        for aba in ("Lançamentos", "Fora da Agenda"):
+        for aba in abas:
             if aba in wb.sheetnames:
                 for row in wb[aba].iter_rows(min_row=PRIMEIRA_LINHA, values_only=True):
                     n = _norm(row[4]) if row and len(row) > 4 else None
@@ -155,8 +155,12 @@ def _e_publicacao(e: dict) -> bool:
     return "PUBLICA" in str(e.get("tipo") or "").upper() or str(e.get("origem") or "").lower().startswith("jusbrasil")
 
 
+def _e_terceiro(e: dict) -> bool:
+    return str(e.get("origem") or "").lower().startswith("e-mail de terceiro")
+
+
 def classificar(eventos: list[dict], paralelas: dict[str, list], agenda: dict[str, list], dia: date,
-                primeira_paralela: date | None = None, datas_paralelas: set | None = None) -> list[dict]:
+                primeira_paralela: date | None = None, datas_paralelas: set | None = None, fora: dict | None = None) -> list[dict]:
     """Situação de cada evento, relativa à DATA DO EVENTO (não a hoje): a publicação do DJEN sai no dia da intimação ou
     nos seguintes, e a anotação manual na Agenda leva publicado igual ou posterior ao evento.
     - intimação anterior à primeira Paralela existente: 'anterior à Paralela' (foi tratada à mão na época; sem linha)
@@ -169,6 +173,18 @@ def classificar(eventos: list[dict], paralelas: dict[str, list], agenda: dict[st
         ev = e.get("data") or dia
         if not e.get("intimacao"):
             e["situacao"], e["detalhe"] = "informativo", ""
+        elif _e_terceiro(e):
+            # e-mail de parceiro/cliente: novidade só se o processo for desconhecido (não está na Agenda em data alguma
+            # nem em Lançamentos de uma Paralela; 'Fora da Agenda' não conta: é o caso que o DJEN viu e nós não temos)
+            conhecido = [(p, z) for p, z in agenda.get(e["norm"], []) if p]
+            em_lanc = [d for d in paralelas.get(e["norm"], []) if d not in (fora or {}).get(e["norm"], [])]
+            if conhecido:
+                p, z = max(conhecido)
+                e["situacao"], e["detalhe"] = "coberto pela Agenda", f"processo conhecido na Agenda (publicado {p:%d/%m/%Y})"
+            elif em_lanc:
+                e["situacao"], e["detalhe"] = "coberto pela Paralela", f"Paralela de {min(em_lanc):%d/%m}"
+            else:
+                e["situacao"], e["detalhe"] = "SEM COBERTURA", "processo desconhecido mencionado em e-mail de terceiro"
         elif primeira_paralela is None or ev < primeira_paralela - timedelta(days=1):
             e["situacao"], e["detalhe"] = "anterior à Paralela", (f"intimação de {ev:%d/%m} anterior à primeira Paralela ({primeira_paralela:%d/%m})"
                                                                  if primeira_paralela else "ainda não há Paralela para conferir")
@@ -319,6 +335,7 @@ def conferir_push(cfg: dict, dia: date) -> list[dict]:
     # processos das Paralelas dos últimos 12 dias (a cobertura é relativa à data de cada evento) e data da primeira Paralela
     from pc.agenda_paralela import RE_DATA_ARQ, pasta_paralela
     paralelas: dict[str, list] = {}
+    fora: dict[str, list] = {}
     datas_existentes = []
     for c in glob.glob(os.path.join(pasta_paralela(cfg), "CACT - Agenda Paralela *.xlsx")):
         m = RE_DATA_ARQ.search(os.path.basename(c))
@@ -329,9 +346,11 @@ def conferir_push(cfg: dict, dia: date) -> list[dict]:
         if dia - timedelta(days=12) <= d <= dia:
             for n in _procs_paralela(c):
                 paralelas.setdefault(n, []).append(d)
+            for n in _procs_paralela(c, abas=("Fora da Agenda",)):
+                fora.setdefault(n, []).append(d)
     primeira_paralela = min(datas_existentes) if datas_existentes else None
     agenda_datas, ref = _agenda(caminho_agenda(cfg)) if os.path.exists(caminho_agenda(cfg)) else ({}, {})
-    classificados = classificar(eventos, paralelas, agenda_datas, dia, primeira_paralela, set(datas_existentes))
+    classificados = classificar(eventos, paralelas, agenda_datas, dia, primeira_paralela, set(datas_existentes), fora)
     sem_cobertura = [e for e in classificados if e["situacao"] == "SEM COBERTURA"]
     if not os.path.exists(paralela_hoje):
         # dia sem Paralela da VM (fim de semana): só vale a pena criar um arquivo se houver intimação a conferir

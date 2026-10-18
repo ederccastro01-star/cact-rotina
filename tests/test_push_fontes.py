@@ -366,3 +366,10 @@ def test_email_de_terceiro_com_cnj_no_assunto_e_elegivel_e_vira_registro():
 
 def test_email_comum_sem_cnj_continua_fora():
     assert pf.elegivel(_email("kelly@escritorio.com.br", "RE: contrato de honorários", "oi, segue minuta")) is False
+
+
+def test_email_do_proprio_escritorio_nao_e_terceiro():
+    """Resposta nossa numa conversa sobre o processo não é novidade: 18/10/2026 a primeira rodada gerou 18 linhas de ruído."""
+    em = _email("ederccastro@hotmail.com", "RE: 0000941-04.2026.5.18.0004 EDILON x EQUATORIAL", "Boa tarde, segue a conta.\n", data=datetime(2026, 10, 16, 10, 0))
+    assert pf.elegivel(em, proprios={"ederccastro@hotmail.com", "ederccastro01@gmail.com"}) is False
+    assert pf.elegivel(em) is True                                                      # sem a lista, continua elegível

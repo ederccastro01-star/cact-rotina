@@ -205,11 +205,14 @@ def origem(remetente_real_: str, assunto: str, corpo: str) -> str:
     return ORIGEM_OUTROS
 
 
-def elegivel(email: Email) -> bool:
+def elegivel(email: Email, proprios=()) -> bool:
+    """`proprios`: endereços do escritório; resposta nossa numa conversa sobre um processo não é novidade (18/10/2026)."""
     rem = remetente_real(email.remetente, email.corpo)
     if any(m in rem for m in MARKETING):
         return False
     o = origem(rem, email.assunto, email.corpo)
+    if o == ORIGEM_TERCEIRO and rem in {str(x).lower() for x in proprios}:
+        return False
     if o == ORIGEM_JUSBRASIL:
         return rem in REMETENTES_JUSBRASIL
     if o in (ORIGEM_PJE, ORIGEM_LEGADO, ORIGEM_TERCEIRO):

@@ -140,6 +140,10 @@
       }
     ],
     "janela_dias": 7,
-    "arquivar_em": null
+    "arquivar_em": null,
+    "enderecos_proprios": [
+      "ederccastro@hotmail.com",
+      "ederccastro01@gmail.com"
+    ]
   }
 }

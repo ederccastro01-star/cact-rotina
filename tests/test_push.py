@@ -244,3 +244,17 @@ def test_mensagem_de_terceiro_sem_cobertura_vira_linha_com_prazo_do_texto(cfg, t
     nova = [x for x in ws.iter_rows(min_row=8, values_only=True) if x and x[4] == "0000477-40.2026.5.18.0081"][0]
     assert nova[0].date() == date(2026, 10, 28) and nova[2].startswith("Verificar e-mail de terceiro") and nova[5] == "Bianka Vitória da Silva"
     assert "lucas@nicoli.adv.br" in nova[10] and "28/10/2026" in nova[10]
+
+
+def test_email_de_terceiro_so_e_novidade_se_o_processo_for_desconhecido():
+    """Processo que a Agenda já conhece (em qualquer data) ou que está em Lançamentos de uma Paralela: correspondência de
+    rotina, informativo. Processo só em 'Fora da Agenda' ou em lugar nenhum: SEM COBERTURA (caso Nicoli, 16/10/2026).
+    E-mail de terceiro não é publicação: a regra 'anterior à Paralela' não se aplica."""
+    base = {"intimacao": True, "data": date(2026, 10, 13), "tipo": "Mensagem de terceiro / Prazo", "origem": "E-mail de terceiro"}
+    ev = [dict(base, norm="1"), dict(base, norm="2"), dict(base, norm="3"), dict(base, norm="4")]
+    paralelas = {"2": [date(2026, 10, 15)]}                                 # Lançamentos
+    fora = {"3": [date(2026, 10, 15)]}                                      # só Fora da Agenda
+    agenda = {"1": [(date(2025, 3, 1), date(2025, 3, 10))]}                 # conhecido, ainda que antigo
+    r = push.classificar(ev, paralelas, agenda, date(2026, 10, 18), primeira_paralela=date(2026, 10, 15), datas_paralelas={date(2026, 10, 15)}, fora=fora)
+    assert [e["situacao"] for e in r] == ["coberto pela Agenda", "coberto pela Paralela", "SEM COBERTURA", "SEM COBERTURA"]
+    assert "conhecido" in r[0]["detalhe"]

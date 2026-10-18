@@ -22,7 +22,7 @@ from pc.push_relatorio import ABA, gerar_relatorio  # noqa: F401 (ABA reexportad
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "push_coletar.log")
-PADRAO = {"fontes": [], "janela_dias": 7, "arquivar_em": None, "ledger": os.path.join(os.path.dirname(os.path.abspath(__file__)), "push_ledger.json")}
+PADRAO = {"fontes": [], "janela_dias": 7, "arquivar_em": None, "enderecos_proprios": [], "ledger": os.path.join(os.path.dirname(os.path.abspath(__file__)), "push_ledger.json")}
 
 
 def _log(msg: str) -> None:
@@ -73,7 +73,8 @@ def coletar(cfg: dict, dia: date, agora: datetime, listar=None, contar_backlog=N
     desde = agora - timedelta(days=int(pc["janela_dias"]))
     razao = ler_ledger(pc["ledger"])
     emails = listar(pc["fontes"], desde)
-    elegiveis = [e for e in emails if elegivel(e)]
+    proprios = {str(x).lower() for x in (pc.get("enderecos_proprios") or [])}
+    elegiveis = [e for e in emails if elegivel(e, proprios)]
     novos = [e for e in elegiveis if e.message_id not in razao]
     registros: list[Registro] = []
     por_email: dict[str, int] = {}

@@ -73,15 +73,19 @@ def _criar_pasta(store, nome: str):
     return atual
 
 
-def _dasl(desde: datetime, ate: datetime | None = None) -> str:
+def _dasl(desde: datetime, ate: datetime | None = None, padroes: bool = True) -> str:
+    """Filtro de data (ISO) e, opcionalmente, de assunto/remetente. A listagem usa só a data: e-mail de parceiro com
+    número de processo no assunto não casa com os padrões PUSH/Jusbrasil, e é `elegivel()` quem decide (18/10/2026)."""
     # data em ISO: o Outlook lê o literal no formato regional do Windows (pt-BR = dd/mm); '10/11/2026' em mm/dd virou
     # 10 de novembro e a coleta devolveu 0 e-mails em 18/10/2026
     q = '"urn:schemas:httpmail:'
     data = f"({q}datereceived\" >= '{desde:%Y-%m-%d %H:%M}')"
     if ate:
         data += f" AND ({q}datereceived\" < '{ate:%Y-%m-%d %H:%M}')"
-    padroes = [f"{q}subject\" LIKE '{p}'" for p in ASSUNTOS] + [f"{q}fromemail\" LIKE '{p}'" for p in REMETENTES]
-    return "@SQL=" + data + " AND (" + " OR ".join(padroes) + ")"
+    if not padroes:
+        return "@SQL=" + data
+    likes = [f"{q}subject\" LIKE '{p}'" for p in ASSUNTOS] + [f"{q}fromemail\" LIKE '{p}'" for p in REMETENTES]
+    return "@SQL=" + data + " AND (" + " OR ".join(likes) + ")"
 
 
 def _local(rt) -> datetime:
@@ -109,7 +113,7 @@ def _message_id(item) -> str:
 
 
 def _itens(pasta, desde: datetime, ate: datetime | None = None):
-    itens = pasta.Items.Restrict(_dasl(desde, ate))
+    itens = pasta.Items.Restrict(_dasl(desde, ate, padroes=False))
     itens.Sort("[ReceivedTime]", True)
     return itens
 
