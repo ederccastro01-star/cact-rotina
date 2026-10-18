@@ -74,10 +74,12 @@ def _criar_pasta(store, nome: str):
 
 
 def _dasl(desde: datetime, ate: datetime | None = None) -> str:
+    # data em ISO: o Outlook lê o literal no formato regional do Windows (pt-BR = dd/mm); '10/11/2026' em mm/dd virou
+    # 10 de novembro e a coleta devolveu 0 e-mails em 18/10/2026
     q = '"urn:schemas:httpmail:'
-    data = f"({q}datereceived\" >= '{desde:%m/%d/%Y %H:%M}')"
+    data = f"({q}datereceived\" >= '{desde:%Y-%m-%d %H:%M}')"
     if ate:
-        data += f" AND ({q}datereceived\" < '{ate:%m/%d/%Y %H:%M}')"
+        data += f" AND ({q}datereceived\" < '{ate:%Y-%m-%d %H:%M}')"
     padroes = [f"{q}subject\" LIKE '{p}'" for p in ASSUNTOS] + [f"{q}fromemail\" LIKE '{p}'" for p in REMETENTES]
     return "@SQL=" + data + " AND (" + " OR ".join(padroes) + ")"
 
