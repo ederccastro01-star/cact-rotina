@@ -97,3 +97,15 @@ def test_passo_vigia_verifica_persistencia_a_cada_15_min(cfg, tmp_path, monkeypa
     ap.passo_vigia(cfg, date(2026, 10, 18), datetime(2026, 10, 18, 10, 5), estado)
     ap.passo_vigia(cfg, date(2026, 10, 18), datetime(2026, 10, 18, 10, 16), estado)
     assert chamadas == [date(2026, 10, 18), date(2026, 10, 18)]
+
+
+def test_linha_que_o_advogado_passou_a_descartar_nao_e_perda(cfg, tmp_path, monkeypatch):
+    """18/10/2026 12:01: linha transportada no automático; o advogado mudou a decisão para Descartar e apagou a linha da
+    Agenda. Lote sem nenhuma linha ainda marcada para agendar não é perda: nada a retransportar, nenhum aviso."""
+    _cfg(cfg, tmp_path); avisos = []; monkeypatch.setattr(ap, "avisar", lambda m: avisos.append(m)); monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None)
+    par = _paralela_transportada(cfg, date(2026, 10, 16), ["758923180"], lote="Transportado em 18/10/2026 12:01")
+    wb = openpyxl.load_workbook(par); wb["Lançamentos"].cell(8, COL_PARALELA["decisao"], "Descartar"); wb.save(par)
+    c = _razao(cfg, par, ["758923180"], quando="2026-10-18T12:01:49")
+    assert ap.verificar_persistencia(cfg, date(2026, 10, 18), ids_fn=lambda: set()) == []
+    assert Razao.carregar(c).tipo == "transporte" and avisos == []
+    assert openpyxl.load_workbook(par)["Lançamentos"].cell(8, COL_PARALELA["lote"]).value == "Transportado em 18/10/2026 12:01"

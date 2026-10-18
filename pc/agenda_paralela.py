@@ -334,6 +334,13 @@ def verificar_persistencia(cfg: dict, hoje: date, ids_fn=None, dias: int = 7) ->
     for c, r, quando in candidatos:
         if any(set(l.get("ids", [])) & na_agenda for l in r.linhas):
             continue
+        # linha que o advogado passou a Descartar (e apagou da Agenda) não é perda: só conta o que ainda pede agendamento
+        if os.path.exists(r.paralela):
+            decisoes = {(x["aba"], int(x["linha"])): x["decisao"].strip().lower() for x in ler_paralela(r.paralela)}
+            ainda = [l for l in r.linhas
+                     if decisoes.get((l.get("aba_paralela"), int(l.get("linha_paralela") or 0)), "") in DECISOES_QUE_AGENDAM]
+            if not ainda:
+                continue
         r.tipo = "perdido"
         r.salvar(c)
         nota = f"lote de {quando:%d/%m/%Y %H:%M} perdido (sumiu da Agenda; conflito de versão do OneDrive?); liberado para novo transporte em {hoje:%d/%m/%Y}"
