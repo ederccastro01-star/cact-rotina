@@ -144,7 +144,8 @@
     "enderecos_proprios": [
       "ederccastro@hotmail.com",
       "ederccastro01@gmail.com",
-      "hainacastro@hotmail.com"
+      "hainacastro@hotmail.com",
+      "alzerocastro@hotmail.com"
     ],
     "parceiros": [
       "@nicoliadvogados.adv.br",
@@ -153,7 +154,6 @@
       "carmen.magda.advocacia@gmail.com",
       "@fujioka.inf.br",
       "@fariaseaguiar.com.br",
-      "alzerocastro@hotmail.com",
       "negraoadv@yahoo.com.br",
       "@redemaxsup.com.br",
       "jdiascontabeis@gmail.com",
@@ -167,6 +167,7 @@
       "@grupoimperial.com.br",
       "@nslogtransportes.com.br"
     ],
-    "_comentario_parceiros": "parceiros: endereços ou domínios (@dominio) vigiados mesmo sem número de processo no assunto; o número é procurado no corpo e nos anexos; sem número, só entra se falar de serviço (orçamento, cálculo, honorários, prazo, processo...). Lista inicial de 18/10/2026 a partir de quem escreveu sobre processos nos últimos 180 dias."
+    "_comentario_parceiros": "parceiros: endereços ou domínios (@dominio) vigiados mesmo sem número de processo no assunto; o número é procurado no corpo e nos anexos; sem número, só entra se falar de serviço (orçamento, cálculo, honorários, prazo, processo...). Lista inicial de 18/10/2026 a partir de quem escreveu sobre processos nos últimos 180 dias.",
+    "_comentario_proprios": "enderecos_proprios: endereços internos do escritório (Eder, Haina, Alzero): mensagem deles não é novidade de terceiro"
   }
 }
