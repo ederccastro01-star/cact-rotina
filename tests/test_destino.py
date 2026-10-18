@@ -119,3 +119,44 @@ def test_cruzar_nao_inclui_processo_so_do_arquivo():
         assert [m["processo"] for m in cr.cruzar(pubs, ref)] == ["2"]
     finally:
         cr.norm_proc = cr_norm
+
+
+# --------------------------------------------------------------------------- 2º grau (precatório/RPV, final .0000)
+from paralela.destino import (MOTIVO_2G_SEM, segundo_grau, vincular_segundo_grau)
+from paralela.polo import Ato
+
+
+def _ato_2g(texto, destinatarios=(), advogados=()):
+    return Ato(processo="0012147-32.2023.5.18.0000", norm="00121473220235180000", texto=texto, ids=["7001"], tribunal="TRT18",
+               destinatarios=list(destinatarios), advogados=list(advogados), polos={"A"})
+
+
+TEXTO_PRECAT = ("PODER JUDICIÁRIO TRT 18ª REGIÃO OJC RPV E PRECATÓRIOS Precat 0012147-32.2023.5.18.0000 REQUERENTE: CARLOS EDUARDO "
+                "FERREIRA GANDARA REQUERIDO: COMPANHIA DE URBANIZACAO DE GOIANIA - COMURG INTIMAÇÃO Fica V. Sa. intimado ... "
+                "autos de origem 0010472-12.2020.5.18.0009 ...")
+
+
+def test_segundo_grau_e_sempre_lancamentos(cfg):
+    ato = _ato_2g(TEXTO_PRECAT)
+    assert segundo_grau(ato) and not segundo_grau(Ato(processo="x", norm="00000011120265180001", texto=""))
+    assert bloco(ato, None, cfg) == "LANCAMENTOS"                     # sem OAB nossa e fora da Agenda: mesmo assim no radar
+
+
+def test_vincula_pelo_processo_de_origem_citado():
+    indice = {"00104721220205180009": ref(("AUTOR(A)",))}
+    rp, origem, motivo = vincular_segundo_grau(_ato_2g(TEXTO_PRECAT), indice)
+    assert rp is indice["00104721220205180009"] and origem == "00104721220205180009"
+    assert "0010472-12.2020.5.18.0009" in motivo and motivo.startswith("2º grau")
+
+
+def test_vincula_pelo_nome_da_parte_quando_nao_cita_origem():
+    rp0 = RefProc(ref={"Reclamante": "Carlos Eduardo Ferreira Gândara", "Reclamado": "COMURG", "Cliente": "AUTOR(A)"}, js={"AUTOR(A)"}, conferido=True, inPub=True)
+    indice = {"00104721220205180009": rp0, "00000011120265180001": ref()}
+    texto = TEXTO_PRECAT.split("autos de origem")[0]
+    rp, origem, motivo = vincular_segundo_grau(_ato_2g(texto, destinatarios=[{"nome": "CARLOS EDUARDO FERREIRA GANDARA", "polo": "A"}]), indice)
+    assert rp is rp0 and origem == "00104721220205180009" and "GANDARA" in motivo.upper() and "0010472-12.2020.5.18.0009" in motivo
+
+
+def test_sem_vinculo_devolve_motivo_de_conferencia():
+    rp, origem, motivo = vincular_segundo_grau(_ato_2g("Precat 0012147-32.2023.5.18.0000 REQUERENTE: NINGUEM REQUERIDO: X"), {"00000011120265180001": ref()})
+    assert rp is None and origem is None and motivo == MOTIVO_2G_SEM

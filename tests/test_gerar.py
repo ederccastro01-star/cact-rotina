@@ -82,3 +82,28 @@ def test_reais_gera_sem_erro(reais, cfg, agenda_amostra, tmp_path):
     assert any(r[COL["destino"] - 1] == "PROCESSO NOVO" and "0011757-98.2024.5.18.0009" in str(r[COL["proc"] - 1]) for r in lanc)
     assert len(_linhas(wb["Fora da Agenda"])) >= 50
     assert "ATENÇÃO" not in str(wb["Lançamentos"]["A6"].value or "")
+
+
+def test_precatorio_de_segundo_grau_vai_para_lancamentos_ligado_a_origem(cfg, tmp_path, monkeypatch):
+    """Pedido do advogado (18/10/2026): processo iniciado no 2º grau (final .0000) sem linha na Agenda e sem OAB nossa
+    na comunicação não pode cair em 'Fora da Agenda'. Se o texto cita o processo de origem que está na Agenda, a linha
+    herda o lado (J) da origem e vai para Lançamentos com CONFERIR explicando o vínculo."""
+    import json
+    import cact_rotina as cr
+    item = {"id": 7001, "hash": "h7001", "siglaTribunal": "TRT18", "tipoComunicacao": "Intimação", "tipoDocumento": "Intimação",
+            "data_disponibilizacao": "2026-10-16", "numero_processo": "00121473220235180000", "numeroprocessocommascara": "0012147-32.2023.5.18.0000",
+            "link": "https://pje.trt18.jus.br/pjekz/validacao/7001",
+            "texto": "PODER JUDICIÁRIO TRT 18ª REGIÃO OJC RPV E PRECATÓRIOS Precat 0012147-32.2023.5.18.0000 REQUERENTE: AUTOR TESTE "
+                     "REQUERIDO: REU TESTE LTDA INTIMAÇÃO Fica V. Sa. intimado para manifestar sobre a atualização do precatório, "
+                     "autos de origem 0000001-11.2026.5.18.0001, no prazo de 5 dias.<br>Intimado(s) / Citado(s)<br> - AUTOR TESTE<br>",
+            "destinatarios": [{"nome": "AUTOR TESTE", "polo": "A"}], "destinatarioadvogados": []}
+    arq = tmp_path / "precat.json"; arq.write_text(json.dumps([item], ensure_ascii=False), encoding="utf-8")
+    pubs = cr.carregar_de_json(str(arq))
+    monkeypatch.setattr(gerar, "indexar_agenda_completa", _ref_sintetico)
+    cfg["pasta_saida"] = str(tmp_path); cfg["anthropic_api_key"] = ""
+    wb = openpyxl.load_workbook(gerar.gerar_agenda_paralela(pubs, cfg, date(2026, 10, 16), usar_ia=False))
+    lanc = _linhas(wb["Lançamentos"]); fora = _linhas(wb["Fora da Agenda"])
+    assert len(lanc) == 1 and len(fora) == 0
+    l = lanc[0]
+    assert l[COL["proc"] - 1] == "0012147-32.2023.5.18.0000" and l[COL["destino"] - 1] == "PRAZO DO ESCRITÓRIO"
+    assert l[COL["cliente"] - 1] == "AUTOR(A)" and "0000001-11.2026.5.18.0001" in l[COL["motivo"] - 1] and "2º grau" in l[COL["motivo"] - 1]

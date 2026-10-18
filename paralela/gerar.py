@@ -7,7 +7,8 @@ import re
 from datetime import date
 
 from cact_rotina import carregar_feriados, log, prazo_em_dias_uteis
-from paralela.destino import CONTRARIA, FORA, bloco, decidir_destino, indexar_agenda_completa, lado_nosso
+from paralela.destino import (CONTRARIA, FORA, bloco, decidir_destino, indexar_agenda_completa, indice_nomes, lado_nosso,
+                              segundo_grau, vincular_segundo_grau)
 from paralela.ia import carregar_vocabulario, classificar, fallback, formatar_resumo
 from paralela.planilha import Linha, gerar_paralela
 from paralela.polo import agrupar_atos
@@ -69,12 +70,16 @@ def gerar_agenda_paralela(pubs: list[dict], cfg: dict, data_disp: date, usar_ia:
     publicado = prazo_em_dias_uteis(data_disp, 1, feriados)
     atos = agrupar_atos(pubs)
     ref = indexar_agenda_completa(cfg)
+    nomes = indice_nomes(ref)
     vocabulario = carregar_vocabulario(cfg) if usar_ia else []
     lancamentos: list[Linha] = []
     fora: list[Linha] = []
     sem_ia = 0
     for ato in atos:
         refproc = ref.get(ato.norm)
+        vinculo = None
+        if refproc is None and segundo_grau(ato):
+            refproc, _origem, vinculo = vincular_segundo_grau(ato, ref, nomes)
         b = bloco(ato, refproc, cfg)
         cls = None
         if usar_ia and b == "LANCAMENTOS":
@@ -85,6 +90,8 @@ def gerar_agenda_paralela(pubs: list[dict], cfg: dict, data_disp: date, usar_ia:
             cls = fallback(ato.texto, ato)
         if b == "LANCAMENTOS":
             dest = decidir_destino(ato, refproc, cfg, cls["peca"])
+            if vinculo:
+                dest.motivos.insert(0, vinculo)
             lancamentos.append(montar_linha(ato, refproc, cfg, publicado, cls, dest))
         else:
             dest = decidir_destino(ato, refproc, cfg, cls["peca"])
