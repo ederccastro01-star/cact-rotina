@@ -14,10 +14,19 @@ from cact_rotina import limpar_texto
 
 COLUNAS_AGENDA = ["Prazo", "Dia/Sem", "Peça", "Publicado", "Processo ", "Reclamante", "Reclamado", "Advogado ",
                   "Prioridade ", "Cliente", "Despacho"]
-COLUNAS_CONTROLE = ["Destino", "Decisão", "Motivo CONFERIR", "Polo intimado", "Intimado(s)", "Fonte do polo",
-                    "Prazo no texto", "Prazo legal", "Base legal", "Link (teor)", "ID DJEN", "Lote", "Observações",
-                    "Prazo calculado", "Corrigir J para"]
-LARGURAS = [10.9, 10.1, 24, 11.4, 26, 30, 34, 26, 12.4, 12, 60, 20, 18, 38, 12, 34, 16, 10, 10, 13, 40, 22, 22, 30, 12, 14]
+# Desenho de 20/11/2026 (pedido do advogado): L = último despacho do processo em "Prazos Feitos" (coluna K da Agenda);
+# o link do teor veio de U para O. As Paralelas anteriores têm o desenho antigo: quem lê acha a coluna pelo cabeçalho
+# (pc.transporte.colunas_do_cabecalho), nunca pela posição.
+COLUNAS_CONTROLE = ["Despacho anterior", "Destino", "Decisão", "Link (teor)", "Motivo CONFERIR", "Polo intimado",
+                    "Intimado(s)", "Fonte do polo", "Prazo no texto", "Prazo legal", "Base legal", "ID DJEN", "Lote",
+                    "Observações", "Prazo calculado", "Corrigir J para"]
+COL = {nome: i for i, nome in enumerate(COLUNAS_AGENDA + COLUNAS_CONTROLE, start=1)}
+C_DESP_ANT, C_DECISAO, C_LINK = COL["Despacho anterior"], COL["Decisão"], COL["Link (teor)"]
+C_PRAZO_CALC, C_CORRIGIR_J = COL["Prazo calculado"], COL["Corrigir J para"]
+# larguras como o Excel as MOSTRA (A a Q ditadas pelo advogado); no arquivo vai a largura mostrada + 5/7 (margem da célula)
+LARGURAS_EXCEL = [7.71, 8.00, 13.29, 9.43, 20, 20, 20, 20, 9.71, 9.29, 34, 34, 10.71, 8.29, 8.00, 12.14, 8.29,
+                  34, 16, 10, 10, 13, 22, 22, 30, 12, 14]
+LARGURAS = [round(w + 5 / 7, 2) for w in LARGURAS_EXCEL]
 DECISOES = '"Agendar,Descartar,Corrigir e agendar"'
 OPCOES_J = '"AUTOR(A),RÉU"'
 ORDEM_DESTINO = {"PROCESSO NOVO": 0, "PRAZO DO ESCRITÓRIO": 2, "DISPENSADA": 4, "PARTE CONTRÁRIA": 3, "FORA DA AGENDA": 5}
@@ -34,21 +43,21 @@ THIN = Side(style="thin", color="BFBFBF")
 BORDA = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 CENTRO = Alignment(horizontal="center", vertical="center", wrap_text=True)
 ESQ = Alignment(horizontal="left", vertical="top", wrap_text=True)
-COLS_ESQ = {6, 7, 8, 11, 14, 16, 21, 24}
+COLS_ESQ = {6, 7, 8, 11, C_DESP_ANT, COL["Motivo CONFERIR"], COL["Intimado(s)"], COL["Observações"]}
 
 LEIA_ME = [
     ("O que é este arquivo", True),
     ("Agenda Paralela do dia, gerada às 5h30 pela rotina do CACT a partir das publicações do DJEN. Toda publicação de processo "
      "do escritório virou uma linha; nada foi gravado na Agenda oficial. As colunas A a K têm o formato da Agenda; de L em "
-     "diante são controle.", False),
+     "diante são controle. A coluna L repete o último despacho do processo na aba Prazos Feitos da Agenda.", False),
     ("", False),
     ("Como usar, de manhã", True),
-    ("1. Aba Lançamentos: amarelo = PROCESSO NOVO; laranja = CONFERIR (há dúvida registrada na coluna N); verde = PRAZO DO "
+    ("1. Aba Lançamentos: amarelo = PROCESSO NOVO; laranja = CONFERIR (há dúvida registrada na coluna P); verde = PRAZO DO "
      "ESCRITÓRIO; cinza = PARTE CONTRÁRIA, só para conhecimento.", False),
-    ("2. Preencha a coluna M (Decisão): Agendar (A), Descartar (D) ou Corrigir e agendar (C). Em 'Corrigir e agendar', "
+    ("2. Preencha a coluna N (Decisão): Agendar (A), Descartar (D) ou Corrigir e agendar (C). Em 'Corrigir e agendar', "
      "ajuste antes a data (A), a peça (C) ou a nota (K) na própria linha.", False),
     ("3. Salve. O script do PC grava as linhas 'Agendar' e 'Corrigir e agendar' na aba Publicações da Agenda oficial, "
-     "copiando A a K como estão, e carimba a coluna W (Lote) com 'Transportado em ...'.", False),
+     "copiando A a K como estão, e carimba a coluna X (Lote) com 'Transportado em ...'.", False),
     ("4. Linha sem decisão não se perde: amanhã aparece na aba Pendentes e no aviso da manhã.", False),
     ("", False),
     ("O que a máquina decide e o que você decide", True),
@@ -57,8 +66,15 @@ LEIA_ME = [
      "da peça (C) e o resumo (K). Você: a decisão e qualquer ajuste.", False),
     ("", False),
     ("Colunas de controle", True),
-    ("L Destino · M Decisão (você) · N Motivo CONFERIR · O Polo intimado · P Intimado(s) · Q Fonte do polo · R Prazo no "
-     "texto · S Prazo legal · T Base legal · U Link para o teor · V ID DJEN · W Lote/Transportado · X Observações.", False),
+    ("L Despacho anterior (Prazos Feitos, coluna K) · M Destino · N Decisão (você) · O Link para o teor · P Motivo CONFERIR · "
+     "Q Polo intimado · R Intimado(s) · S Fonte do polo · T Prazo no texto · U Prazo legal · V Base legal · W ID DJEN · "
+     "X Lote/Transportado · Y Observações · Z Prazo calculado · AA Corrigir J para (você).", False),
+    ("", False),
+    ("Aba Parceiros - Liquidação", True),
+    ("Intimações para APRESENTAR CÁLCULOS DE LIQUIDAÇÃO em processos da carteira dos parceiros que ainda não estão na Agenda. "
+     "A lista é acumulada: cada intimação fica até você tirar. Situação: 'Aguardando' (dentro do prazo), 'Chegou à Agenda em "
+     "dd/mm' (o processo passou a constar na Agenda) ou 'PRAZO VENCIDO SEM CHEGAR'. A coluna Observações é sua e é levada "
+     "para a Paralela do dia seguinte; escreva 'Baixar' nela para a linha sair da lista.", False),
 ]
 
 
@@ -86,6 +102,7 @@ class Linha:
     ids: str = ""
     lote: str = ""
     observacoes: str = ""
+    despacho_anterior: str = ""
 
 
 def _ordem(l: Linha):
@@ -105,7 +122,7 @@ def _cabecalho(ws, titulo: str, subtitulo: str):
                 "(não vão para a Agenda, exceto ID DJEN, Link e Lote).")
     ws["A4"].font = Font(name="Arial", size=9, color="595959")
     ws["A5"] = ("Legenda: verde = PRAZO DO ESCRITÓRIO; cinza = PARTE CONTRÁRIA; amarelo = PROCESSO NOVO; laranja = CONFERIR. "
-                "Você preenche só a coluna M (Decisão) e, se quiser, A/C/K e X (Observações).")
+                "Você preenche só a coluna N (Decisão) e, se quiser, A/C/K e Y (Observações).")
     ws["A5"].font = Font(name="Arial", size=9, color="595959")
     for i, (h, w) in enumerate(zip(COLUNAS_AGENDA + COLUNAS_CONTROLE, LARGURAS), start=1):
         c = ws.cell(row=7, column=i, value=h)
@@ -119,26 +136,27 @@ def _escrever(ws, row: int, l: Linha):
     cor = FILL["CONFERIR"] if (l.motivo and l.destino == "PRAZO DO ESCRITÓRIO") else FILL.get(l.destino, "FFFFFF")
     fill = PatternFill("solid", fgColor=cor)
     vals = [l.prazo, None, l.peca, l.publicado, l.processo, l.reclamante, l.reclamado, l.advogado, l.prioridade, l.cliente,
-            l.despacho, l.destino, None, l.motivo, l.polo_intimado, l.intimados, l.fonte_polo, l.prazo_texto, l.prazo_legal,
-            l.base_legal, l.link, l.ids, l.lote, l.observacoes, l.prazo,       # Y = prazo calculado (fica mesmo se A for corrigida)
-            None]                                                              # Z = Corrigir J para (o advogado preenche)
+            l.despacho, l.despacho_anterior, l.destino, None, l.link, l.motivo, l.polo_intimado, l.intimados, l.fonte_polo,
+            l.prazo_texto, l.prazo_legal, l.base_legal, l.ids, l.lote, l.observacoes,
+            l.prazo,       # Z = prazo calculado (fica mesmo se A for corrigida)
+            None]          # AA = Corrigir J para (o advogado preenche)
     for i, v in enumerate(vals, start=1):
         if isinstance(v, str):
             v = limpar_texto(v)
         c = ws.cell(row=row, column=i, value=v)
         c.font = COURIER if i == 5 else ARIAL; c.border = BORDA; c.fill = fill
         c.alignment = ESQ if i in COLS_ESQ else CENTRO
-        if i in (1, 4, 25):
+        if i in (1, 4, C_PRAZO_CALC):
             c.number_format = "dd/mm/yy;@"
         if i == 2:
             c.value = f'=IF(A{row}="","",A{row})'; c.number_format = "ddd"
         if i == 5:
             c.number_format = "@"
-        if i == 21 and v:
+        if i == C_LINK and v:
             c.hyperlink = v; c.value = "abrir teor"
             c.font = Font(name="Arial", size=9, color="0563C1", underline="single")
-    ws.cell(row=row, column=13).fill = AMARELO
-    ws.cell(row=row, column=26).fill = AMARELO
+    ws.cell(row=row, column=C_DECISAO).fill = AMARELO
+    ws.cell(row=row, column=C_CORRIGIR_J).fill = AMARELO
     ws.row_dimensions[row].height = 54
 
 
@@ -152,14 +170,17 @@ def _aba(wb, titulo, subtitulo, nome, linhas: list[Linha], ordenar=True):
         dv = DataValidation(type="list", formula1=DECISOES, allow_blank=True)
         dv.prompt = ("Agendar: o script grava na Agenda oficial. Descartar: só registro. "
                      "Corrigir e agendar: corrija A, C ou K nesta linha antes.")
-        ws.add_data_validation(dv); dv.add(f"M8:M{row - 1}")
+        ld = get_column_letter(C_DECISAO); ws.add_data_validation(dv); dv.add(f"{ld}8:{ld}{row - 1}")
         dvj = DataValidation(type="list", formula1=OPCOES_J, allow_blank=True)
         dvj.prompt = "Lado que o escritório representa neste processo. O transporte corrige a coluna J em todas as linhas do processo na Agenda e marca 'Polo conferido'."
-        ws.add_data_validation(dvj); dvj.add(f"Z8:Z{row - 1}")
+        lj = get_column_letter(C_CORRIGIR_J); ws.add_data_validation(dvj); dvj.add(f"{lj}8:{lj}{row - 1}")
     return ws, row
 
 
-def gerar_paralela(lancamentos: list[Linha], fora: list[Linha], caminho: str, data_disp: date, conciliacao: dict) -> str:
+def gerar_paralela(lancamentos: list[Linha], fora: list[Linha], caminho: str, data_disp: date, conciliacao: dict,
+                   parceiros: list | None = None, nota_parceiros: str = "") -> str:
+    """`parceiros`: registros da aba "Parceiros - Liquidação" (lista acumulada). None = arquivo sem a aba (Paralela criada
+    pelo PC no fim de semana, ou falha na montagem): a rotina do dia seguinte procura a lista na Paralela anterior."""
     wb = openpyxl.Workbook()
     wl = wb.active; wl.title = "Leia-me"
     for i, (t, b) in enumerate(LEIA_ME, start=1):
@@ -190,5 +211,8 @@ def gerar_paralela(lancamentos: list[Linha], fora: list[Linha], caminho: str, da
          "ele entra em Lançamentos.", "Fora da Agenda", fora)
     _aba(wb, "Pendentes — linhas de dias anteriores sem decisão",
          "Preenchida pelo script do PC a partir das Paralelas anteriores. Some quando a decisão é dada.", "Pendentes", [])
+    if parceiros is not None:
+        from paralela.parceiros import escrever_aba
+        escrever_aba(wb, parceiros, data_disp, nota_parceiros)
     wb.save(caminho)
     return caminho

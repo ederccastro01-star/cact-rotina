@@ -9,7 +9,7 @@ from paralela import gerar
 from paralela.destino import RefProc
 
 PROC1 = "00000011120265180001"
-COL = {"prazo": 1, "peca": 3, "proc": 5, "cliente": 10, "despacho": 11, "destino": 12, "motivo": 14, "polo": 15, "ids": 22}
+COL = {"prazo": 1, "peca": 3, "proc": 5, "cliente": 10, "despacho": 11, "desp_ant": 12, "destino": 13, "motivo": 16, "polo": 17, "ids": 23}
 
 
 def _ref_sintetico(_cfg):

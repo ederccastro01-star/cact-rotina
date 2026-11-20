@@ -175,7 +175,69 @@ def _entrada(texto: str, polo_intimado: str, lado_nosso: str, vocabulario: list[
             f"Texto da intimação:\n{(texto or '')[:9000]}")
 
 
+# ----------------------------------------------------------------------------- IA pela assinatura (Claude Code sem janela)
+def via_claude_code(cfg: dict) -> bool:
+    """cfg["ia_via"] == "claude_code": a leitura é feita pelo `claude -p` do PC, com o login da assinatura (claude.ai),
+    sem a API paga. Testado em 20/11/2026 (plano Max): ~10 s por publicação com o modelo opus."""
+    return str(cfg.get("ia_via") or "").strip().lower() == "claude_code"
+
+
+def tem_ia(cfg: dict) -> bool:
+    return via_claude_code(cfg) or bool((cfg.get("anthropic_api_key") or "").strip())
+
+
+def paralelismo(cfg: dict) -> int:
+    """Chamadas simultâneas: 4 pelo Claude Code (cada uma é um processo de ~10 s); 1 pela API (limite de requisições)."""
+    return max(1, int(cfg.get("ia_paralelo") or (4 if via_claude_code(cfg) else 1)))
+
+
+def chamar_claude_code(sistema: str, entrada: str, cfg: dict, rotulo: str = "Claude Code") -> str | None:
+    """Texto da resposta, ou None (CLI ausente, erro, tempo esgotado). As instruções vão por ARQUIVO: o `claude.cmd` do
+    Windows corta argumento com quebra de linha. Ambiente sem ANTHROPIC_API_KEY nem variáveis CLAUDE*, para valer o login
+    da assinatura mesmo se o programa for lançado de dentro de outra sessão. Sem ferramentas, sem hooks, sem CLAUDE.md."""
+    import shutil
+    import subprocess
+    import tempfile
+    try:
+        from cact_rotina import log
+    except ImportError:  # pragma: no cover
+        log = print
+    exe = cfg.get("claude_code_exe") or shutil.which("claude.cmd") or shutil.which("claude")
+    if not exe:
+        log(f"  ! {rotulo}: comando 'claude' não encontrado no PATH.")
+        return None
+    env = {k: v for k, v in os.environ.items() if k.upper() != "ANTHROPIC_API_KEY" and not k.upper().startswith("CLAUDE")}
+    pasta = tempfile.mkdtemp(prefix="cact_cc_")
+    try:
+        arq = os.path.join(pasta, "sistema.txt")
+        with open(arq, "w", encoding="utf-8") as fh:
+            fh.write(sistema)
+        cmd = [exe, "-p", "--model", str(cfg.get("modelo_claude_code") or "opus"), "--system-prompt-file", arq, "--tools", "",
+               "--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands", "--no-session-persistence",
+               "--output-format", "json"]
+        r = subprocess.run(cmd, input=entrada, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+                           cwd=pasta, timeout=int(cfg.get("claude_code_timeout_seg") or 240),
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        try:
+            d = json.loads(r.stdout)
+        except json.JSONDecodeError:
+            log(f"  ! {rotulo}: resposta ilegível (código {r.returncode}): {(r.stdout or r.stderr or '')[:160]}")
+            return None
+        if d.get("is_error") or not d.get("result"):
+            log(f"  ! {rotulo}: {str(d.get('result') or d.get('subtype') or d.get('api_error_status'))[:160]}")
+            return None
+        return str(d["result"])
+    except Exception as e:  # noqa: BLE001 — tempo esgotado, CLI quebrado: cai na regra sem IA
+        log(f"  ! {rotulo} erro: {e}")
+        return None
+    finally:
+        shutil.rmtree(pasta, ignore_errors=True)
+
+
 def classificar(texto: str, polo_intimado: str, lado_nosso: str, vocabulario: list[dict], cfg: dict) -> dict | None:
+    if via_claude_code(cfg):
+        conteudo = chamar_claude_code(PROMPT_PARALELA, _entrada(texto, polo_intimado, lado_nosso, vocabulario), cfg, "Claude Code (Paralela)")
+        return parse_resposta(conteudo) if conteudo else None
     chave = (cfg.get("anthropic_api_key") or "").strip()
     if not chave:
         return None

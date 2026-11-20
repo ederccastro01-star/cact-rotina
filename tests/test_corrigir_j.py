@@ -37,20 +37,20 @@ def test_planilha_tem_coluna_corrigir_j(tmp_path):
     caminho = str(tmp_path / "p.xlsx")
     gerar_paralela([_linha("1")], [], caminho, date(2026, 10, 16), {"ok": True})
     ws = openpyxl.load_workbook(caminho)["Lançamentos"]
-    assert COLUNAS_CONTROLE[-1] == "Corrigir J para" and ws["Z7"].value == "Corrigir J para"
-    assert ws["Z8"].fill.fgColor.rgb.endswith("FFFF00")
+    assert COLUNAS_CONTROLE[-1] == "Corrigir J para" and ws["AA7"].value == "Corrigir J para"
+    assert ws["AA8"].fill.fgColor.rgb.endswith("FFFF00")
     formulas = [dv.formula1 for dv in ws.data_validations.dataValidation]
     assert '"AUTOR(A),RÉU"' in formulas
 
 
 def test_ler_paralela_le_corrigir_j_normalizado(cfg, tmp_path):
     _cfg_pc(cfg, tmp_path)
-    par = _paralela(cfg, date(2026, 10, 16), [_linha("1"), _linha("2"), _linha("3")], {"Z8": "réu", "Z9": "autor", "Z10": "✔ RÉU (17/10 09:00)"})
+    par = _paralela(cfg, date(2026, 10, 16), [_linha("1"), _linha("2"), _linha("3")], {"AA8": "réu", "AA9": "autor", "AA10": "✔ RÉU (17/10 09:00)"})
     l = {x["ids"][0]: x for x in tr.ler_paralela(par)}
     assert l["1"]["corrigir_j"] == "RÉU" and l["2"]["corrigir_j"] == "AUTOR(A)"
     assert l["3"]["corrigir_j"] is None and l["3"]["j_corrigida"] is True
     assert tr.normalizar_j("Ré") == "RÉU" and tr.normalizar_j("AUTOR") == "AUTOR(A)" and tr.normalizar_j("x") is None
-    assert tr.COL_PARALELA["corrigir_j"] == 26
+    assert tr.COL_PARALELA["corrigir_j"] == 27
 
 
 # ----------------------------------------------------------------------------- fakes do Excel
@@ -95,7 +95,7 @@ def _ambiente(monkeypatch, eventos):
 def test_correcao_de_j_em_todas_as_linhas_do_processo_e_nas_duas_abas(cfg, tmp_path, monkeypatch):
     _cfg_pc(cfg, tmp_path); eventos = []
     pub, pf = _ambiente(monkeypatch, eventos)
-    par = _paralela(cfg, date(2026, 10, 16), [_linha("1")], {"Z8": "RÉU", "M8": "Descartar"})     # só correção, sem Agendar
+    par = _paralela(cfg, date(2026, 10, 16), [_linha("1")], {"AA8": "RÉU", "N8": "Descartar"})     # só correção, sem Agendar
     razao = ap.transportar(cfg, par, str(tmp_path / "agenda.xlsx"))
     assert razao is not None
     assert pub.dados[(8, 10)] == "RÉU" and pub.dados[(10, 10)] == "RÉU" and pub.dados[(9, 10)] == "AUTOR(A)"
@@ -107,13 +107,13 @@ def test_correcao_de_j_em_todas_as_linhas_do_processo_e_nas_duas_abas(cfg, tmp_p
     assert len(corr) == 3 and {(c["aba"], c["linha_agenda"]) for c in corr} == {("Publicações", 8), ("Publicações", 10), ("Prazos Feitos", 8)}
     assert all(c["j_antes"] == "AUTOR(A)" and c["j_depois"] == "RÉU" for c in corr)
     ws = openpyxl.load_workbook(par)["Lançamentos"]
-    assert str(ws["Z8"].value).startswith("✔ RÉU")                                                    # marcada como aplicada
+    assert str(ws["AA8"].value).startswith("✔ RÉU")                                                    # marcada como aplicada
 
 
 def test_correcao_ja_aplicada_nao_repete(cfg, tmp_path, monkeypatch):
     _cfg_pc(cfg, tmp_path); eventos = []
     _ambiente(monkeypatch, eventos)
-    par = _paralela(cfg, date(2026, 10, 16), [_linha("1")], {"Z8": "✔ RÉU (17/10 09:00)"})
+    par = _paralela(cfg, date(2026, 10, 16), [_linha("1")], {"AA8": "✔ RÉU (17/10 09:00)"})
     assert ap.transportar(cfg, par, str(tmp_path / "agenda.xlsx")) is None
     assert not any(e[0] == "set" for e in eventos)
 
@@ -121,7 +121,7 @@ def test_correcao_ja_aplicada_nao_repete(cfg, tmp_path, monkeypatch):
 def test_linha_transportada_leva_j_corrigida(cfg, tmp_path, monkeypatch):
     _cfg_pc(cfg, tmp_path); eventos = []
     pub, _ = _ambiente(monkeypatch, eventos)
-    par = _paralela(cfg, date(2026, 10, 16), [_linha("1")], {"Z8": "RÉU", "M8": "Agendar"})
+    par = _paralela(cfg, date(2026, 10, 16), [_linha("1")], {"AA8": "RÉU", "N8": "Agendar"})
     ap.transportar(cfg, par, str(tmp_path / "agenda.xlsx"))
     assert pub.dados[(3231, 10)] == "RÉU"                                                            # linha nova já com a J certa
 

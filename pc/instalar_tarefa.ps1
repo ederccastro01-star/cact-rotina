@@ -4,7 +4,7 @@
 # 2) "CACT - Agenda Paralela": ao fazer logon (opcional; exige administrador).
 #
 # Lição de 18/10/2026: "/SC MINUTE /MO 15 /ST 08:00 /ET 23:00" cria um gatilho de UM dia só (EndBoundary na data da
-# instalação) e a tarefa nunca mais dispara. O certo é DAILY com repetição: /SC DAILY /ST 08:00 /RI 15 /DU 15:00.
+# instalação) e a tarefa nunca mais dispara. O certo é DAILY com repetição: /SC DAILY /ST 06:00 /RI 15 /DU 17:00.
 $clone  = Split-Path -Parent $PSScriptRoot
 $python = (Get-Command pythonw.exe -ErrorAction SilentlyContinue).Source
 if (-not $python) { $python = (Get-Command python.exe).Source }
@@ -13,12 +13,12 @@ $nome = "CACT - Agenda Paralela (repetir)"
 
 schtasks /Delete /TN "CACT - Agenda Paralela" /F 2>$null | Out-Null
 schtasks /Delete /TN $nome /F 2>$null | Out-Null
-schtasks /Create /TN $nome /SC DAILY /ST 08:00 /RI 15 /DU 15:00 /TR "cmd /c cd /d `"$clone`" && $cmd" /RL LIMITED /F | Out-Null
+schtasks /Create /TN $nome /SC DAILY /ST 06:00 /RI 15 /DU 17:00 /TR "cmd /c cd /d `"$clone`" && $cmd" /RL LIMITED /F | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Host "ERRO: nao criei a tarefa '$nome'." -ForegroundColor Red; exit 1 }
 
 # Notebook na bateria e PC que estava desligado na hora: a tarefa deve rodar mesmo assim.
 $ajustes = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
-    -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 16)
+    -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 18)
 # Acao direta no pythonw (sem "cmd /c"): o cmd abria uma janela preta por um instante a cada 15 min (18/10/2026).
 $acao = New-ScheduledTaskAction -Execute $python -Argument "-m pc.agenda_paralela vigiar" -WorkingDirectory $clone
 Set-ScheduledTask -TaskName $nome -Settings $ajustes -Action $acao | Out-Null

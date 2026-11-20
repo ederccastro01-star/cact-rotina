@@ -17,7 +17,11 @@ def _linha(decisao, ids, lote="", linha=8, aba="Lançamentos"):
 
 def test_colunas():
     assert tr.COL == {"polo_conferido": 14, "id_djen": 15, "link": 16, "origem": 17, "lote": 18, "conferir": 19}
-    assert tr.COL_PARALELA == {"destino": 12, "decisao": 13, "motivo": 14, "link": 21, "ids": 22, "lote": 23, "obs": 24, "prazo_calculado": 25, "corrigir_j": 26}
+    assert tr.COL_PARALELA == {"despacho_anterior": 12, "destino": 13, "decisao": 14, "link": 15, "motivo": 16, "polo": 17, "intimados": 18,
+                               "fonte_polo": 19, "prazo_texto": 20, "prazo_legal": 21, "base_legal": 22, "ids": 23, "lote": 24, "obs": 25,
+                               "prazo_calculado": 26, "corrigir_j": 27}
+    from paralela.planilha import COLUNAS_CONTROLE          # os dois lados (VM e PC) têm de concordar
+    assert list(tr.CABECALHOS_PARALELA) == COLUNAS_CONTROLE
 
 
 def test_selecionar_so_decisoes_de_agendar():

@@ -28,7 +28,7 @@ def _paralela(cfg, dia, linhas, decisoes=None):
     if decisoes:
         wb = openpyxl.load_workbook(caminho); ws = wb["Lançamentos"]
         for linha, dec in decisoes.items():
-            ws.cell(linha, 13, dec)
+            ws.cell(linha, 14, dec)
         wb.save(caminho)
     return caminho
 
@@ -68,8 +68,8 @@ def test_montar_pendentes_ignora_decididas(cfg, tmp_path, monkeypatch):
     pend = ap.montar_pendentes(cfg, date(2026, 10, 16))
     assert len(pend) == 1 and pend[0]["ids"] == ["2"]
     ws = openpyxl.load_workbook(hoje)["Pendentes"]
-    assert ws["E8"].value == "0000001-11.2026.5.18.0001" and ws["V8"].value == "2"
-    assert ws["X8"].value == "Paralela 15-10-2026 (sem decisão)" and ws["W8"].value in (None, "")   # origem em X; W fica para o Lote
+    assert ws["E8"].value == "0000001-11.2026.5.18.0001" and ws["W8"].value == "2"
+    assert ws["Y8"].value == "Paralela 15-10-2026 (sem decisão)" and ws["X8"].value in (None, "")   # origem em Y; X fica para o Lote
 
 
 class _Cells:
@@ -144,7 +144,7 @@ def test_transportar_grava_razao_antes_do_save(cfg, tmp_path, monkeypatch):
     assert gravados[(3231, 2)] == '=IF(A3231="","",A3231)'
     assert (3231, 14) not in gravados
     ws = openpyxl.load_workbook(paralela)["Lançamentos"]
-    assert str(ws["W8"].value).startswith("Transportado em") and ws["W9"].value in (None, "")
+    assert str(ws["X8"].value).startswith("Transportado em") and ws["X9"].value in (None, "")
 
 
 def test_transportar_segunda_vez_zero_linhas(cfg, tmp_path, monkeypatch):

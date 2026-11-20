@@ -114,13 +114,13 @@ def test_conferir_push_cria_aba_e_linha_sem_cobertura(cfg, tmp_path, monkeypatch
     novas = [r_ for r_ in ws.iter_rows(min_row=8, values_only=True) if r_ and r_[4] == "0000894-09.2026.5.18.0011"]
     assert len(novas) == 1
     nova = novas[0]
-    assert nova[11] == "PRAZO DO ESCRITÓRIO" and "PJe" in nova[13] and "DJEN" in nova[13]
-    assert nova[21].startswith("PUSH:") and nova[9] == "RÉU" and nova[5] == "MANOEL AFONSO"      # ID PUSH; J e partes vêm da Agenda
+    assert nova[12] == "PRAZO DO ESCRITÓRIO" and "PJe" in nova[15] and "DJEN" in nova[15]
+    assert nova[22].startswith("PUSH:") and nova[9] == "RÉU" and nova[5] == "MANOEL AFONSO"      # ID PUSH; J e partes vêm da Agenda
     assert nova[0].date() == date(2026, 10, 22)                                                      # 15/10 + 5 dias úteis (lado seguro)
     assert str(nova[2]).startswith("Verificar intimação no PJe")
     assert ws.cell(ws.max_row, 1).value is None or not str(ws.cell(ws.max_row, 1).value).startswith("Concilia") or True
-    dv = [d for d in ws.data_validations.dataValidation if "M" in str(d.sqref)][0]
-    assert any(str(nova[4]) in str(c.value) for c in ws["E"]) and f"M{8 + 1}" in str(dv.sqref).replace("M8:M9", "M8 M9")
+    dv = [d for d in ws.data_validations.dataValidation if "N" in str(d.sqref)][0]
+    assert any(str(nova[4]) in str(c.value) for c in ws["E"]) and f"N{8 + 1}" in str(dv.sqref).replace("N8:N9", "N8 N9")
 
 
 def test_conferir_push_e_idempotente(cfg, tmp_path, monkeypatch):
@@ -183,7 +183,7 @@ def test_sem_cobertura_colapsa_por_processo_e_dia_e_nao_duplica(cfg, tmp_path, m
         novas = [x for x in ws.iter_rows(min_row=8, values_only=True) if x and x[4] == "0000777-77.2026.5.18.0007"]
         assert len(novas) == 2                                                              # 15/10 (3 eventos → 1 linha) e 14/10
         linha15 = [n for n in novas if n[3].date() == date(2026, 10, 15)][0]
-        assert "+2 outro" in linha15[10] and linha15[21].startswith("PUSH:")
+        assert "+2 outro" in linha15[10] and linha15[22].startswith("PUSH:")
         push.conferir_push(cfg, date(2026, 10, 16))
 
 
@@ -203,7 +203,7 @@ def test_fim_de_semana_sem_paralela_cria_paralela_so_com_push(cfg, tmp_path, mon
     wb = openpyxl.load_workbook(par)
     assert "Conferência PUSH" in wb.sheetnames
     novas = [x for x in wb["Lançamentos"].iter_rows(min_row=8, values_only=True) if x and x[4] == "0000567-95.2025.5.18.0012"]
-    assert len(novas) == 1 and novas[0][5] == "AFONSO SOARES" and novas[0][21].startswith("PUSH:")
+    assert len(novas) == 1 and novas[0][5] == "AFONSO SOARES" and novas[0][22].startswith("PUSH:")
 
 
 def test_publicacao_sem_paralela_do_dia_nao_e_conferivel():

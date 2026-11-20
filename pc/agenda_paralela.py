@@ -23,8 +23,8 @@ import openpyxl
 
 from pc.excel_com import (abrir_livro, coluna_valores, com, fechar_livro, get_range,  # noqa: F401 (monkeypatch nos testes)
                           proxima_linha_tabela, set_cell, set_text)
-from pc.transporte import (COL, COL_PARALELA, DECISOES_QUE_AGENDAM, MARCA_APLICADA, PRIMEIRA_LINHA, Razao, ids_da_agenda,
-                           ler_paralela, linhas_para_desfazer, selecionar, valores_agenda)
+from pc.transporte import (COL, COL_PARALELA, DECISOES_QUE_AGENDAM, MARCA_APLICADA, PRIMEIRA_LINHA, Razao, colunas_paralela,
+                           ids_da_agenda, ler_paralela, linhas_para_desfazer, selecionar, valores_agenda)
 from pc.push import caminho_push, conferir_push  # noqa: F401 (monkeypatch nos testes)
 from pc.push_coletar import coletar  # noqa: F401 (monkeypatch nos testes)
 
@@ -164,13 +164,22 @@ def _paralelas_anteriores(cfg: dict, hoje: date, dias: int) -> list[tuple[date, 
     return sorted(out)
 
 
-def _escrever_linha_paralela(ws_openpyxl, r: int, l: dict, origem: str) -> None:
+def _valores_pendente(l: dict, cols: dict) -> dict[int, object]:
+    """coluna → valor de uma linha de Pendentes, nas colunas do arquivo de DESTINO (`cols`); a linha pode ter vindo de
+    uma Paralela do desenho antigo."""
+    v = {cols["motivo"]: l["motivo"], cols["link"]: l["link"], cols["ids"]: ";".join(l["ids"]), cols["obs"]: l["origem"]}
+    if l.get("prazo_calculado") is not None and cols.get("prazo_calculado"):
+        v[cols["prazo_calculado"]] = l["prazo_calculado"]
+    if l.get("despacho_anterior") and cols.get("despacho_anterior"):
+        v[cols["despacho_anterior"]] = l["despacho_anterior"]
+    return v
+
+
+def _escrever_linha_paralela(ws_openpyxl, r: int, l: dict, cols: dict) -> None:
     for c, v in enumerate(l["a_k"], start=1):
         ws_openpyxl.cell(r, c, f'=IF(A{r}="","",A{r})' if c == 2 else v)
-    ws_openpyxl.cell(r, COL_PARALELA["motivo"], l["motivo"]); ws_openpyxl.cell(r, COL_PARALELA["link"], l["link"])
-    ws_openpyxl.cell(r, COL_PARALELA["ids"], ";".join(l["ids"])); ws_openpyxl.cell(r, COL_PARALELA["obs"], origem)
-    if l.get("prazo_calculado") is not None:
-        ws_openpyxl.cell(r, COL_PARALELA["prazo_calculado"], l["prazo_calculado"])
+    for c, v in _valores_pendente(l, cols).items():
+        ws_openpyxl.cell(r, c, v)
 
 
 def montar_pendentes(cfg: dict, hoje: date, dias: int = 30) -> list[dict]:
@@ -192,6 +201,7 @@ def montar_pendentes(cfg: dict, hoje: date, dias: int = 30) -> list[dict]:
     destino = caminho_paralela(cfg, hoje)
     if not os.path.exists(destino):
         return pendentes
+    cols = colunas_paralela(destino).get("Pendentes") or dict(COL_PARALELA)     # colunas do arquivo de hoje
     aberto = _livro_aberto_no_excel(destino)
     if aberto:
         _, wb = aberto
@@ -203,17 +213,13 @@ def montar_pendentes(cfg: dict, hoje: date, dias: int = 30) -> list[dict]:
                     com(set_cell, ws, r, c, f'=IF(A{r}="","",A{r})')
                 elif v is not None:
                     com(set_cell, ws, r, c, v)
-            com(set_cell, ws, r, COL_PARALELA["motivo"], l["motivo"])
-            com(set_cell, ws, r, COL_PARALELA["link"], l["link"])
-            com(set_text, ws, r, COL_PARALELA["ids"], ";".join(l["ids"]))
-            com(set_cell, ws, r, COL_PARALELA["obs"], l["origem"])
-            if l.get("prazo_calculado") is not None:
-                com(set_cell, ws, r, COL_PARALELA["prazo_calculado"], l["prazo_calculado"])
+            for c, v in _valores_pendente(l, cols).items():
+                com(set_text if c == cols["ids"] else set_cell, ws, r, c, v)
     else:
         wb = openpyxl.load_workbook(destino)
         ws = wb["Pendentes"]
         for i, l in enumerate(pendentes):
-            _escrever_linha_paralela(ws, PRIMEIRA_LINHA + i, l, l["origem"])
+            _escrever_linha_paralela(ws, PRIMEIRA_LINHA + i, l, cols)
         wb.save(destino)
     return pendentes
 
@@ -347,12 +353,14 @@ def verificar_persistencia(cfg: dict, hoje: date, ids_fn=None, dias: int = 7) ->
         r.tipo = "perdido"
         r.salvar(c)
         nota = f"lote de {quando:%d/%m/%Y %H:%M} perdido (sumiu da Agenda; conflito de versão do OneDrive?); liberado para novo transporte em {hoje:%d/%m/%Y}"
-        celulas = []
-        for l in r.linhas:
-            if l.get("aba_paralela") and l.get("linha_paralela"):
-                celulas.append((l["aba_paralela"], l["linha_paralela"], COL_PARALELA["lote"], ""))
-                celulas.append((l["aba_paralela"], l["linha_paralela"], COL_PARALELA["obs"], nota))
         if os.path.exists(r.paralela):
+            cols = colunas_paralela(r.paralela)
+            celulas = []
+            for l in r.linhas:
+                if l.get("aba_paralela") and l.get("linha_paralela"):
+                    cp = cols.get(l["aba_paralela"]) or COL_PARALELA
+                    celulas.append((l["aba_paralela"], l["linha_paralela"], cp["lote"], ""))
+                    celulas.append((l["aba_paralela"], l["linha_paralela"], cp["obs"], nota))
             _marcar_celulas_na_paralela(r.paralela, celulas)
         _log(f"PERSISTÊNCIA: {len(r.linhas)} linha(s) do lote {os.path.basename(c)} não estão mais na Agenda; retransporte liberado")
         avisar(f"{len(r.linhas)} linha(s) agendada(s) em {quando:%d/%m %H:%M} sumiram da Agenda; vou gravá-las de novo")
@@ -378,7 +386,8 @@ def _marcar_celulas_na_paralela(caminho: str, celulas: list[tuple[str, int, int,
 
 
 def _marcar_lote_na_paralela(caminho: str, linhas: list[dict], lote: str) -> None:
-    _marcar_celulas_na_paralela(caminho, [(l["aba"], l["linha"], COL_PARALELA["lote"], lote) for l in linhas])
+    cols = colunas_paralela(caminho)
+    _marcar_celulas_na_paralela(caminho, [(l["aba"], l["linha"], (cols.get(l["aba"]) or COL_PARALELA)["lote"], lote) for l in linhas])
 
 
 def _norm_proc(v) -> str:
@@ -481,8 +490,8 @@ def transportar(cfg: dict, caminho_paralela_: str, agenda: str) -> Razao | None:
         fechar_livro(livro)
     agora = f"{datetime.now():%d/%m %H:%M}"
     _marcar_celulas_na_paralela(caminho_paralela_,
-                                [(l["aba"], l["linha"], COL_PARALELA["lote"], lote) for l in sel] +
-                                [(l["aba"], l["linha"], COL_PARALELA["corrigir_j"], f"{MARCA_APLICADA} {l['corrigir_j']} ({agora})")
+                                [(l["aba"], l["linha"], l["cols"]["lote"], lote) for l in sel] +
+                                [(l["aba"], l["linha"], l["cols"]["corrigir_j"], f"{MARCA_APLICADA} {l['corrigir_j']} ({agora})")
                                  for l in linhas_corrigidas])
     partes = []
     if sel:
@@ -548,6 +557,8 @@ class Estado:
     coleta_feita: bool = False
     persistencia_em: datetime | None = None
     avisou_transporte_pendente: bool = False
+    geracao_em: datetime | None = None
+    geracoes: int = 0
 
 
 def _hora(cfg: dict) -> tuple[int, int]:
@@ -580,6 +591,12 @@ def _transportar_seguro(cfg: dict, caminho: str, espera_s: int = 120, lancar: bo
         return None
     finally:
         soltar_trava(trava)
+
+
+def gerar_local(cfg: dict) -> bool:
+    """True: a Paralela é gerada pelo PC ao ligar (pc.rodar_local), com a leitura pelo Claude Code da assinatura.
+    False (padrão): o PC só espera a Paralela que a VM entrega às 5h30."""
+    return bool(_pc(cfg).get("gerar_local", False))
 
 
 def transporte_automatico(cfg: dict) -> bool:
@@ -673,10 +690,26 @@ def passo_vigia(cfg: dict, dia: date, agora: datetime, estado: Estado) -> None:
         except Exception as e:  # noqa: BLE001
             _log(f"ERRO na conferência PUSH: {e}")
     caminho = caminho_paralela(cfg, dia)
+    # geração no PC (pc.gerar_local, desde 20/11/2026): sem Paralela do dia, o próprio PC consulta o DJEN e gera a de hoje e
+    # as dos dias úteis em que ficou desligado. Sem arquivo (DJEN ou rede fora do ar; a busca do DJEN às vezes volta zerada
+    # por horas): 2ª tentativa em 15 min, depois de 2 em 2 horas, até 6 por dia (a contingência da VM tentava até às 16h).
+    if gerar_local(cfg) and not os.path.exists(caminho) and estado.geracoes < 6 \
+            and (estado.geracao_em is None or agora - estado.geracao_em >= timedelta(minutes=15 if estado.geracoes < 2 else 120)):
+        estado.geracao_em = agora
+        estado.geracoes += 1
+        try:
+            from pc import rodar_local
+            feitos = rodar_local.rodar(cfg, dia)
+            if feitos:
+                _log("geração local: " + "; ".join(f"{d:%d/%m} ({os.path.basename(c)})" for d, c in feitos))
+        except Exception as e:  # noqa: BLE001
+            _log(f"ERRO na geração local da Paralela: {e}")
+            avisar(f"não gerei a Paralela de hoje no PC: {str(e)[:90]}")
     if not arquivo_pronto(caminho, agora.timestamp()):
         h, m = _hora(cfg)
         if not estado.avisou_sem_arquivo and (agora.hour, agora.minute) >= (h, m) and agora.weekday() < 5:
-            avisar(f"VM não entregou a Paralela de hoje ({dia:%d/%m}); continuo esperando")
+            avisar((f"ainda não há Paralela de hoje ({dia:%d/%m}): veja pc\\rodar_local.log" if gerar_local(cfg)
+                    else f"VM não entregou a Paralela de hoje ({dia:%d/%m}); continuo esperando"))
             estado.avisou_sem_arquivo = True
         return
     if not estado.abriu:

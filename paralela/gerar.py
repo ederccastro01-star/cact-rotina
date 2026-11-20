@@ -60,6 +60,7 @@ def montar_linha(ato, refproc, cfg, publicado: date, cls: dict, dest) -> Linha:
         destino=dest.rotulo, motivo="; ".join(dest.motivos + pr.alertas), polo_intimado=_polo_txt(ato.polos),
         intimados=", ".join(ato.intimados)[:120], fonte_polo=dest.fonte_polo,
         prazo_texto=n_texto, prazo_legal=pr.legal, base_legal=pr.base, link=ato.link, ids=";".join(ato.ids),
+        despacho_anterior=(refproc.despacho_pf if refproc else "") or "",
     )
 
 
@@ -76,16 +77,29 @@ def gerar_agenda_paralela(pubs: list[dict], cfg: dict, data_disp: date, usar_ia:
     vocabulario = carregar_vocabulario(cfg) if usar_ia else []
     lancamentos: list[Linha] = []
     fora: list[Linha] = []
+    atos_fora = []
     sem_ia = 0
+    preparados = []
     for ato in atos:
         refproc = ref.get(ato.norm)
         vinculo = None
         if refproc is None and segundo_grau(ato):
             refproc, _origem, vinculo = vincular_segundo_grau(ato, ref, nomes)
-        b = bloco(ato, refproc, cfg)
+        preparados.append((ato, refproc, vinculo, bloco(ato, refproc, cfg)))
+    # a IA lê só os atos de Lançamentos; em paralelo quando a leitura é pelo Claude Code (um processo de ~10 s por ato)
+    respostas: dict[int, dict | None] = {}
+    if usar_ia:
+        from concurrent.futures import ThreadPoolExecutor
+        from paralela.ia import paralelismo
+        alvo = [(i, p) for i, p in enumerate(preparados) if p[3] == "LANCAMENTOS"]
+        with ThreadPoolExecutor(max_workers=paralelismo(cfg)) as pool:
+            lidas = pool.map(lambda ip: classificar(ip[1][0].texto, _polo_txt(ip[1][0].polos), LADO_TXT.get(lado_nosso(ip[1][1])),
+                                                    vocabulario, cfg), alvo)
+            respostas = {i: r for (i, _), r in zip(alvo, lidas)}
+    for i, (ato, refproc, vinculo, b) in enumerate(preparados):
         cls = None
         if usar_ia and b == "LANCAMENTOS":
-            cls = classificar(ato.texto, _polo_txt(ato.polos), LADO_TXT.get(lado_nosso(refproc)), vocabulario, cfg)
+            cls = respostas.get(i)
             if cls is None:
                 sem_ia += 1
         if cls is None:
@@ -100,6 +114,7 @@ def gerar_agenda_paralela(pubs: list[dict], cfg: dict, data_disp: date, usar_ia:
             dest.rotulo = FORA
             dest.motivos = [MOTIVO_FORA] + [m for m in dest.motivos if m != MOTIVO_NOVO]
             fora.append(montar_linha(ato, refproc, cfg, publicado, cls, dest))
+            atos_fora.append(ato)
 
     # conciliação: todo id das publicações do dia aparece em exatamente um ato
     ids_pubs = {str(p["item"].get("id")) for p in pubs if p.get("item") and p["item"].get("id") is not None}
@@ -116,6 +131,16 @@ def gerar_agenda_paralela(pubs: list[dict], cfg: dict, data_disp: date, usar_ia:
     os.makedirs(cfg["pasta_saida"], exist_ok=True)
     nome = f"CACT - Agenda Paralela {data_disp:%d-%m-%Y}.xlsx"
     caminho = os.path.join(cfg["pasta_saida"], nome)
-    gerar_paralela(lancamentos, fora, caminho, data_disp, conciliacao)
-    log(f"Agenda Paralela salva: {nome}  ({len(lancamentos)} lançamentos, {len(fora)} fora da Agenda)")
+    # aba "Parceiros - Liquidação" (lista acumulada); nunca derruba a Paralela: se falhar, o arquivo sai sem a aba
+    parceiros, nota = None, ""
+    if cfg.get("gerar_parceiros", True):
+        try:
+            from paralela.parceiros import montar
+            parceiros, nota = montar(atos_fora, cfg, set(ref), publicado, data_disp, usar_ia)
+        except Exception as e:  # noqa: BLE001
+            import traceback
+            log("ATENÇÃO: aba Parceiros - Liquidação não gerada: " + str(e) + "\n" + traceback.format_exc())
+    gerar_paralela(lancamentos, fora, caminho, data_disp, conciliacao, parceiros, nota)
+    log(f"Agenda Paralela salva: {nome}  ({len(lancamentos)} lançamentos, {len(fora)} fora da Agenda"
+        + (f", {len(parceiros)} na lista de parceiros" if parceiros is not None else "") + ")")
     return caminho

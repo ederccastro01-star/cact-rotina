@@ -116,7 +116,11 @@
     "intervalo_min": 15,
     "transporte_automatico": false,
     "hora_alerta_transporte": "17:30",
-    "_comentario_transporte": "transporte_automatico false (18/10/2026): a Agenda só recebe linhas pelo gatilho 'Transportar agora' (Transportar_agora.bat); às hora_alerta_transporte o vigia avisa se há decisões marcadas sem transporte"
+    "_comentario_transporte": "transporte_automatico false (18/10/2026): a Agenda só recebe linhas pelo gatilho 'Transportar agora' (Transportar_agora.bat); às hora_alerta_transporte o vigia avisa se há decisões marcadas sem transporte",
+    "gerar_local": true,
+    "ia_via": "claude_code",
+    "dias_recuperar": 7,
+    "_comentario_gerar_local": "gerar_local true (pc.virada): a Paralela é gerada pelo PC ao ligar (pc.rodar_local), leitura pelo Claude Code da assinatura; os agendamentos da VM ficam em /opt/cact/desligado. NUNCA os dois ligados juntos."
   },
   "tabela_publicacoes": "Tabela1",
   "tabela_prazos_feitos": "Tabela2",

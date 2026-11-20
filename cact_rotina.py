@@ -444,7 +444,14 @@ def indexar_agenda(cfg):
             return "RÉU"
         return None
 
-    def varre(aba, store, conj, minimo=11):
+    ultimo_pf = {}     # norm -> (prazo, despacho) da linha mais recente de Prazos Feitos com a coluna K preenchida
+
+    def _quando(v):
+        if isinstance(v, datetime):
+            return v.date()
+        return v if isinstance(v, date) else date.min
+
+    def varre(aba, store, conj, minimo=11, ultimos=None):
         if aba not in wb.sheetnames:
             return
         for row in wb[aba].iter_rows(min_row=1, values_only=True):
@@ -455,6 +462,10 @@ def indexar_agenda(cfg):
                 continue
             conj.add(n)
             if len(row) >= 11:
+                if ultimos is not None and str(row[10] or "").strip():
+                    q = _quando(row[0])
+                    if n not in ultimos or q >= ultimos[n][0]:      # empate: vale a linha de baixo
+                        ultimos[n] = (q, str(row[10]).strip())
                 store[n] = {
                     "Reclamante": row[5], "Reclamado": row[6], "Advogado": row[7],
                     "Prioridade": row[8], "Cliente": row[9], "Despacho": row[10],
@@ -472,7 +483,7 @@ def indexar_agenda(cfg):
                 }
 
     varre(cfg.get("aba_publicacoes", "Publicações"), ref_pub, set_pub)
-    varre(cfg.get("aba_prazos_feitos", "Prazos Feitos"), ref_pf, set_pf)
+    varre(cfg.get("aba_prazos_feitos", "Prazos Feitos"), ref_pf, set_pf, ultimos=ultimo_pf)
     varre(cfg.get("aba_prazos_feitos_arquivo", "Prazos Feitos (Arquivo)"), ref_arq, set_arq, minimo=9)
     wb.close()
 
@@ -482,6 +493,7 @@ def indexar_agenda(cfg):
             "ref": ref_pub.get(n) or ref_pf.get(n) or ref_arq.get(n) or {},
             "inPub": n in set_pub, "inPF": n in set_pf, "inArq": n in set_arq,
             "js": js.get(n, set()), "conferido": n in conferidos,
+            "despacho_pf": ultimo_pf[n][1] if n in ultimo_pf else "",
         }
     log(f"Agenda indexada — Publicações: {len(set_pub)} | Prazos Feitos: {len(set_pf)} | Arquivo: {len(set_arq)}")
     return ref
@@ -603,7 +615,13 @@ Responda SOMENTE com um objeto JSON válido, sem texto antes ou depois, no forma
 
 
 def classificar_claude(texto, cfg, cliente=None):
-    """Classificação com a API do Claude (Anthropic). Retorna dict ou None em caso de falha."""
+    """Classificação com a API do Claude (Anthropic) ou, com cfg["ia_via"] == "claude_code", pelo Claude Code do PC
+    (login da assinatura, sem API). Retorna dict ou None em caso de falha."""
+    entrada = (f"Cliente (polo que o escritório representa): {cliente or 'Não informado'}\n\n"
+               f"Inteiro teor da intimação:\n{texto[:9000]}")
+    if str(cfg.get("ia_via") or "").strip().lower() == "claude_code":
+        from paralela.ia import chamar_claude_code
+        return _ler_classificacao(chamar_claude_code(PROMPT_SISTEMA, entrada, cfg, "Claude Code (Cruzamento)"))
     chave = cfg.get("anthropic_api_key", "")
     if not chave or requests is None:
         return None
@@ -613,8 +631,6 @@ def classificar_claude(texto, cfg, cliente=None):
         "anthropic-version": "2023-06-01",
         "content-type": "application/json",
     }
-    entrada = (f"Cliente (polo que o escritório representa): {cliente or 'Não informado'}\n\n"
-               f"Inteiro teor da intimação:\n{texto[:9000]}")
     corpo = {
         "model": cfg.get("modelo_claude", "claude-opus-5-5"),
         "max_tokens": 4000,          # o raciocínio interno do Opus 5.5 conta neste limite
@@ -633,22 +649,35 @@ def classificar_claude(texto, cfg, cliente=None):
         if resposta.get("stop_reason") in ("refusal", "max_tokens"):
             log(f"  ! Claude: stop_reason={resposta.get('stop_reason')}; usando heurística")
             return None
-        conteudo = "\n".join(b.get("text", "") for b in resposta.get("content", []) if b.get("type") == "text")
-        m = re.search(r"\{.*\}", conteudo, re.S)
-        if not m:
-            return None
-        dados = json.loads(m.group(0))
-        return {
-            "destinatario": dados.get("destinatario") or "",
-            "peca": dados.get("peca") or "Acompanhamento",
-            "prazo_dias": dados.get("prazo_dias"),
-            "resumo": dados.get("resumo") or "",
-            "honorarios": bool(dados.get("honorarios")),
-            "decisao": bool(dados.get("decisao")),
-        }
+        return _ler_classificacao("\n".join(b.get("text", "") for b in resposta.get("content", []) if b.get("type") == "text"))
     except Exception as e:
         log(f"  ! Claude erro: {e}")
         return None
+
+
+def _ler_classificacao(conteudo):
+    """Dict do Cruzamento a partir do texto da resposta; None se não houver JSON legível (aí entra a heurística)."""
+    m = re.search(r"\{.*\}", conteudo or "", re.S)
+    if not m:
+        return None
+    try:
+        dados = json.loads(m.group(0))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(dados, dict):
+        return None
+    try:
+        prazo = int(dados.get("prazo_dias")) if dados.get("prazo_dias") not in (None, "") else None
+    except (TypeError, ValueError):
+        prazo = None
+    return {
+        "destinatario": dados.get("destinatario") or "",
+        "peca": dados.get("peca") or "Acompanhamento",
+        "prazo_dias": prazo,
+        "resumo": dados.get("resumo") or "",
+        "honorarios": bool(dados.get("honorarios")),
+        "decisao": bool(dados.get("decisao")),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -681,12 +710,19 @@ def gerar_relatorio_cruzamento(matches, cfg, data_disp, usar_ia):
 
     r = 2
     sem_ia = 0         # processos que a IA não classificou (caíram na heurística)
-    for m in matches:
+    lidas = [None] * len(matches)
+    if usar_ia and matches:
+        # pelo Claude Code cada leitura é um processo de ~10 s: 4 ao mesmo tempo; pela API, uma por vez (como sempre foi)
+        from concurrent.futures import ThreadPoolExecutor
+        via_cc = str(cfg.get("ia_via") or "").strip().lower() == "claude_code"
+        with ThreadPoolExecutor(max_workers=max(1, int(cfg.get("ia_paralelo") or (4 if via_cc else 1)))) as pool:
+            lidas = list(pool.map(lambda m: classificar_claude(m["texto"], cfg, m["ref"].get("Cliente")), matches))
+    for m, lida in zip(matches, lidas):
         rf = m["ref"]
         cliente = rf.get("Cliente")
         cls = None
         if usar_ia:
-            cls = classificar_claude(m["texto"], cfg, cliente)
+            cls = lida
             if cls is None:
                 sem_ia += 1
         if cls is None:
@@ -769,7 +805,8 @@ def executar_rotina(cfg, data_disp=None, fonte="djen", arquivo=None, sem_ia=Fals
         log(f"{data_disp:%d/%m/%Y} não é dia útil — nada a fazer.")
         return gerados
 
-    usar_ia = (not sem_ia) and bool(cfg.get("anthropic_api_key"))
+    via_cc = str(cfg.get("ia_via") or "").strip().lower() == "claude_code"     # leitura pelo Claude Code (assinatura), sem API
+    usar_ia = (not sem_ia) and (via_cc or bool(cfg.get("anthropic_api_key")))
     if not usar_ia and not sem_ia:
         log("AVISO: sem chave da API do Claude — usando classificação heurística. "
             "Configure 'anthropic_api_key' para resumos por IA.")

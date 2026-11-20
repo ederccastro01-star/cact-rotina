@@ -20,7 +20,9 @@ from datetime import date, datetime, timedelta
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
-from pc.transporte import COL_PARALELA, PRIMEIRA_LINHA
+from openpyxl.utils import get_column_letter
+
+from pc.transporte import COL_PARALELA, PRIMEIRA_LINHA, colunas_paralela
 
 CNJ = re.compile(r"\d{7}-?\d{2}\.?\d{4}\.?\d\.?\d{2}\.?\d{4}")
 ABA_CONFERENCIA = "Conferência PUSH"
@@ -130,6 +132,7 @@ def _agenda(caminho: str) -> tuple[dict[str, list[tuple[date, date]]], dict[str,
     wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
     datas: dict[str, list] = {}
     ref: dict[str, dict] = {}
+    ultimo_pf: dict[str, tuple] = {}     # norm → (prazo, despacho) da linha mais recente de Prazos Feitos com K preenchida
     try:
         for aba in ("Publicações", "Prazos Feitos"):
             if aba not in wb.sheetnames:
@@ -143,6 +146,12 @@ def _agenda(caminho: str) -> tuple[dict[str, list[tuple[date, date]]], dict[str,
                     datas.setdefault(n, []).append((pub, prazo))
                 if len(row) > 9:
                     ref[n] = {"reclamante": row[5], "reclamado": row[6], "advogado": row[7], "cliente": row[9]}
+                if aba == "Prazos Feitos" and len(row) > 10 and str(row[10] or "").strip():
+                    q = prazo or date.min
+                    if n not in ultimo_pf or q >= ultimo_pf[n][0]:
+                        ultimo_pf[n] = (q, str(row[10]).strip())
+        for n, (_, despacho) in ultimo_pf.items():
+            ref.setdefault(n, {})["despacho_pf"] = despacho
     finally:
         wb.close()
         shutil.rmtree(os.path.dirname(tmp), ignore_errors=True)
@@ -244,7 +253,9 @@ def _prazo_no_texto(teor: str, base: date) -> date | None:
     return min(datas) if datas else None
 
 
-def _linha_lancamento(cfg: dict, e: dict, ref: dict, dia: date, outros: int = 0) -> dict[int, object]:
+def _linha_lancamento(cfg: dict, e: dict, ref: dict, dia: date, outros: int = 0, cols: dict | None = None) -> dict[int, object]:
+    """coluna → valor da linha CONFERIR, nas colunas do arquivo de destino (`cols`, do cabeçalho; padrão: desenho atual)."""
+    cols = cols or COL_PARALELA
     base = e.get("data") or dia
     terceiro = str(e.get("origem") or "").lower().startswith("e-mail de terceiro")
     prazo = (_prazo_no_texto(e.get("teor") or "", base) if terceiro else None) or _dias_uteis(cfg, base, PRAZO_PADRAO, e.get("tribunal", ""))
@@ -256,15 +267,20 @@ def _linha_lancamento(cfg: dict, e: dict, ref: dict, dia: date, outros: int = 0)
     else:
         despacho = f"PUSH: {e.get('tipo')} · {teor}" + (f" (+{outros} outro(s) evento(s) do Push no mesmo dia)" if outros else "")
         peca, motivo, fonte = "Verificar intimação no PJe (Push)", MOTIVO_PUSH, "PUSH (e-mail)"
-    return {1: prazo, 3: peca, 4: base, 5: e["processo"] or "(sem número no e-mail)",
-            6: r.get("reclamante") or e.get("autor") or None, 7: r.get("reclamado") or e.get("reu") or None,
-            8: r.get("advogado"), 9: "NORMAL", 10: r.get("cliente"), 11: despacho,
-            COL_PARALELA["destino"]: "PRAZO DO ESCRITÓRIO", COL_PARALELA["motivo"]: motivo, 15: "?", 17: fonte,
-            18: None, COL_PARALELA["ids"]: e["ident"], COL_PARALELA["prazo_calculado"]: prazo}
+    v = {1: prazo, 3: peca, 4: base, 5: e["processo"] or "(sem número no e-mail)",
+         6: r.get("reclamante") or e.get("autor") or None, 7: r.get("reclamado") or e.get("reu") or None,
+         8: r.get("advogado"), 9: "NORMAL", 10: r.get("cliente"), 11: despacho}
+    extras = {"destino": "PRAZO DO ESCRITÓRIO", "motivo": motivo, "polo": "?", "fonte_polo": fonte, "ids": e["ident"],
+              "prazo_calculado": prazo, "despacho_anterior": r.get("despacho_pf")}
+    for chave, valor in extras.items():
+        if cols.get(chave):
+            v[cols[chave]] = valor
+    return v
 
 
-def _ids_existentes(ws) -> set[str]:
-    return {str(ws.cell(r, COL_PARALELA["ids"]).value) for r in range(PRIMEIRA_LINHA, ws.max_row + 1) if ws.cell(r, COL_PARALELA["ids"]).value}
+def _ids_existentes(ws, cols: dict | None = None) -> set[str]:
+    c = (cols or COL_PARALELA)["ids"]
+    return {str(ws.cell(r, c).value) for r in range(PRIMEIRA_LINHA, ws.max_row + 1) if ws.cell(r, c).value}
 
 
 def _ultima_linha_dados(ws) -> int:
@@ -275,11 +291,13 @@ def _ultima_linha_dados(ws) -> int:
     return ultima
 
 
-def _inserir_linha_openpyxl(ws, valores: dict[int, object]) -> int:
+def _inserir_linha_openpyxl(ws, valores: dict[int, object], cols: dict | None = None) -> int:
+    cols = cols or COL_PARALELA
     r = _ultima_linha_dados(ws) + 1
     ws.insert_rows(r)
     modelo = r - 1 if r - 1 >= PRIMEIRA_LINHA else None
-    for c in range(1, 27):
+    amarelas = [cols[k] for k in ("decisao", "corrigir_j") if cols.get(k)]      # células que o advogado preenche
+    for c in range(1, max(cols.values()) + 1):
         cel = ws.cell(r, c)
         if modelo:
             m = ws.cell(modelo, c)
@@ -288,13 +306,14 @@ def _inserir_linha_openpyxl(ws, valores: dict[int, object]) -> int:
     for c, v in valores.items():
         ws.cell(r, c, v)
     ws.cell(r, 2, f'=IF(A{r}="","",A{r})')
-    ws.cell(r, 13).fill = PatternFill("solid", fgColor="FFFF00"); ws.cell(r, 26).fill = PatternFill("solid", fgColor="FFFF00")
+    for c in amarelas:
+        ws.cell(r, c).fill = PatternFill("solid", fgColor="FFFF00")
     for dv in ws.data_validations.dataValidation:
         s = str(dv.sqref)
-        if s.startswith("M"):
-            dv.add(f"M{r}")
-        elif s.startswith("Z"):
-            dv.add(f"Z{r}")
+        for c in amarelas:
+            letra = get_column_letter(c)
+            if re.match(letra + r"\d", s):
+                dv.add(f"{letra}{r}")
     return r
 
 
@@ -364,6 +383,7 @@ def conferir_push(cfg: dict, dia: date) -> list[dict]:
         gerar_paralela([], [], paralela_hoje, dia, {"ok": True, "atos": 0, "processos": 0, "ids": 0})
         _log(f"Paralela de {dia:%d/%m} criada só com o Push ({len(sem_cobertura)} intimação(ões) sem cobertura)")
 
+    cols = colunas_paralela(paralela_hoje).get("Lançamentos") or dict(COL_PARALELA)     # o arquivo de hoje pode ser do desenho antigo
     aberto = _livro_aberto_no_excel(paralela_hoje)
     if aberto:
         # Paralela aberta no Excel do advogado: gravar pela instância (aba de conferência + linhas novas)
@@ -386,7 +406,7 @@ def conferir_push(cfg: dict, dia: date) -> list[dict]:
                     com(set_cell, ws_c, i, c, v if not isinstance(v, date) else datetime(v.year, v.month, v.day))
         ws_l = com(wb.Worksheets, "Lançamentos")
         ultima = int(com(lambda: ws_l.Cells(ws_l.Rows.Count, 5).End(-4162).Row))
-        existentes = {str(com(lambda r=r: ws_l.Cells(r, COL_PARALELA["ids"]).Value) or "") for r in range(PRIMEIRA_LINHA, ultima + 1)}
+        existentes = {str(com(lambda r=r: ws_l.Cells(r, cols["ids"]).Value) or "") for r in range(PRIMEIRA_LINHA, ultima + 1)}
         novas = 0
         for grupo in _agrupar_sem_cobertura(sem_cobertura):
             if any(x["ident"] in existentes for x in grupo):
@@ -394,10 +414,10 @@ def conferir_push(cfg: dict, dia: date) -> list[dict]:
             e = grupo[0]
             r = ultima + 1
             com(lambda r=r: ws_l.Rows(r).Insert())
-            for c, v in _linha_lancamento(cfg, e, ref, dia, outros=len(grupo) - 1).items():
+            for c, v in _linha_lancamento(cfg, e, ref, dia, outros=len(grupo) - 1, cols=cols).items():
                 if v is None:
                     continue
-                if c in (5, COL_PARALELA["ids"]):
+                if c in (5, cols["ids"]):
                     com(set_text, ws_l, r, c, v)
                 else:
                     com(set_cell, ws_l, r, c, v if not isinstance(v, date) else datetime(v.year, v.month, v.day))
@@ -409,12 +429,12 @@ def conferir_push(cfg: dict, dia: date) -> list[dict]:
         wb = openpyxl.load_workbook(paralela_hoje)
         _escrever_conferencia_openpyxl(wb, classificados, dia, fonte)
         ws_l = wb["Lançamentos"]
-        existentes = _ids_existentes(ws_l)
+        existentes = _ids_existentes(ws_l, cols)
         novas = 0
         for grupo in _agrupar_sem_cobertura(sem_cobertura):
             if any(x["ident"] in existentes for x in grupo):
                 continue
-            _inserir_linha_openpyxl(ws_l, _linha_lancamento(cfg, grupo[0], ref, dia, outros=len(grupo) - 1)); novas += 1
+            _inserir_linha_openpyxl(ws_l, _linha_lancamento(cfg, grupo[0], ref, dia, outros=len(grupo) - 1, cols=cols), cols); novas += 1
             existentes.update(x["ident"] for x in grupo)
         wb.save(paralela_hoje)
     _log(f"Conferência PUSH {dia:%d/%m}: {len(eventos)} eventos, {sum(1 for e in classificados if e['intimacao'])} intimações, "

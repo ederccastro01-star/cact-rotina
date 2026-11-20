@@ -36,6 +36,7 @@ class RefProc:
     inPub: bool = False
     inPF: bool = False
     inArq: bool = False
+    despacho_pf: str = ""      # coluna K da linha mais recente do processo em Prazos Feitos
 
 
 @dataclass
@@ -51,7 +52,8 @@ def indexar_agenda_completa(cfg: dict) -> dict[str, RefProc]:
     out = {}
     for n, d in indexar_agenda(cfg).items():
         out[n] = RefProc(ref=d.get("ref") or {}, js=set(d.get("js") or ()), conferido=bool(d.get("conferido")),
-                         inPub=bool(d.get("inPub")), inPF=bool(d.get("inPF")), inArq=bool(d.get("inArq")))
+                         inPub=bool(d.get("inPub")), inPF=bool(d.get("inPF")), inArq=bool(d.get("inArq")),
+                         despacho_pf=str(d.get("despacho_pf") or ""))
     return out
 
 

@@ -30,7 +30,7 @@ def _paralela(cfg, dia, linhas, decisoes=None, aba="Lançamentos"):
     if decisoes:
         wb = openpyxl.load_workbook(caminho); ws = wb[aba]
         for linha, dec in decisoes.items():
-            ws.cell(linha, 13, dec)
+            ws.cell(linha, 14, dec)
         wb.save(caminho)
     return caminho
 
@@ -42,7 +42,7 @@ def test_pendente_tem_origem_em_observacoes_e_lote_vazio(cfg, tmp_path, monkeypa
     hoje = _paralela(cfg, date(2026, 10, 16), [_linha("3")])
     ap.montar_pendentes(cfg, date(2026, 10, 16))
     ws = openpyxl.load_workbook(hoje)["Pendentes"]
-    assert ws["X8"].value == "Paralela 15-10-2026 (sem decisão)" and ws["W8"].value in (None, "")
+    assert ws["Y8"].value == "Paralela 15-10-2026 (sem decisão)" and ws["X8"].value in (None, "")
     linhas = tr.ler_paralela(hoje)
     pend = [l for l in linhas if l["aba"] == "Pendentes"]
     assert pend and pend[0]["lote"] == "" and pend[0]["origem"] == "Paralela 15-10-2026 (sem decisão)"
@@ -53,7 +53,7 @@ def test_pendente_agendar_e_selecionada(cfg, tmp_path, monkeypatch):
     _paralela(cfg, date(2026, 10, 15), [_linha("1")])
     hoje = _paralela(cfg, date(2026, 10, 16), [_linha("3")])
     ap.montar_pendentes(cfg, date(2026, 10, 16))
-    wb = openpyxl.load_workbook(hoje); wb["Pendentes"]["M8"] = "Agendar"; wb.save(hoje)
+    wb = openpyxl.load_workbook(hoje); wb["Pendentes"]["N8"] = "Agendar"; wb.save(hoje)
     sel, avisos = tr.selecionar(tr.ler_paralela(hoje), set())
     assert [l["ids"] for l in sel] == [["1"]] and avisos == []
 
@@ -65,7 +65,7 @@ def test_decisao_em_pendentes_nao_ressuscita_amanha(cfg, tmp_path, monkeypatch):
     d2 = _paralela(cfg, date(2026, 10, 15), [_linha("3")])
     ap.montar_pendentes(cfg, date(2026, 10, 15))
     wb = openpyxl.load_workbook(d2); ws = wb["Pendentes"]
-    alvo = next(r for r in range(8, 10) if ws.cell(r, 22).value == "1"); ws.cell(alvo, 13, "Descartar"); wb.save(d2)
+    alvo = next(r for r in range(8, 10) if ws.cell(r, 23).value == "1"); ws.cell(alvo, 14, "Descartar"); wb.save(d2)
     _paralela(cfg, date(2026, 10, 16), [_linha("4")])
     pend = ap.montar_pendentes(cfg, date(2026, 10, 16))
     assert sorted(l["ids"][0] for l in pend) == ["2", "3"]          # "1" foi decidida em Pendentes; não volta
@@ -234,7 +234,7 @@ def test_planilha_guarda_prazo_calculado_em_Y(tmp_path):
     caminho = str(tmp_path / "p.xlsx")
     gerar_paralela([_linha("1", prazo=date(2026, 10, 29))], [], caminho, date(2026, 10, 16), {"ok": True})
     ws = openpyxl.load_workbook(caminho)["Lançamentos"]
-    assert ws["Y7"].value == "Prazo calculado" and ws["Y8"].value.date() == date(2026, 10, 29)
+    assert ws["Z7"].value == "Prazo calculado" and ws["Z8"].value.date() == date(2026, 10, 29)
 
 
 def test_comparar_usa_prazo_calculado_e_le_prazos_feitos(tmp_path):
@@ -245,7 +245,7 @@ def test_comparar_usa_prazo_calculado_e_le_prazos_feitos(tmp_path):
     agenda = str(tmp_path / "agenda.xlsx"); wb.save(agenda)
     par = str(tmp_path / "CACT - Agenda Paralela 16-10-2026.xlsx")
     gerar_paralela([_linha("1", prazo=date(2026, 10, 29))], [], par, date(2026, 10, 16), {"ok": True})
-    w = openpyxl.load_workbook(par); w["Lançamentos"]["A8"] = date(2026, 10, 20); w["Lançamentos"]["M8"] = "Corrigir e agendar"; w.save(par)
+    w = openpyxl.load_workbook(par); w["Lançamentos"]["A8"] = date(2026, 10, 20); w["Lançamentos"]["N8"] = "Corrigir e agendar"; w.save(par)
     r = cm.comparar(agenda, [par], date(2026, 10, 15), date(2026, 10, 22))
     assert r["manuais"] == 1 and r["casadas"] == 1
     assert r["data_auto_posterior"] == [("0000001-11.2026.5.18.0001", date(2026, 10, 29), date(2026, 10, 26))]   # Y, não a A corrigida

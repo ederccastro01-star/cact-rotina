@@ -23,18 +23,18 @@ def test_gerar_paralela_layout(tmp_path):
     ws = wb["Lançamentos"]
     assert [ws.cell(7, i + 1).value for i in range(11)] == COLUNAS_AGENDA
     assert [ws.cell(7, 12 + i).value for i in range(len(COLUNAS_CONTROLE))] == COLUNAS_CONTROLE
-    assert ws["L7"].value == "Destino" and ws["M7"].value == "Decisão" and ws["V7"].value == "ID DJEN"
+    assert ws["L7"].value == "Despacho anterior" and ws["M7"].value == "Destino" and ws["N7"].value == "Decisão" and ws["O7"].value == "Link (teor)" and ws["W7"].value == "ID DJEN"
     assert ws["B8"].value == '=IF(A8="","",A8)' and ws["B8"].number_format == "ddd"
     assert ws["E8"].font.name == "Courier New"
     assert ws["A8"].number_format == "dd/mm/yy;@"
     dv = ws.data_validations.dataValidation
     assert len(dv) == 2 and dv[0].formula1 == '"Agendar,Descartar,Corrigir e agendar"'
-    assert "M8:M9" in str(dv[0].sqref) and dv[1].formula1 == '"AUTOR(A),RÉU"' and "Z8:Z9" in str(dv[1].sqref)
-    assert ws["M8"].fill.fgColor.rgb.endswith("FFFF00")
-    assert ws["V8"].value == "1;2"
+    assert "N8:N9" in str(dv[0].sqref) and dv[1].formula1 == '"AUTOR(A),RÉU"' and "AA8:AA9" in str(dv[1].sqref)
+    assert ws["N8"].fill.fgColor.rgb.endswith("FFFF00")
+    assert ws["W8"].value == "1;2"
     assert ws.freeze_panes == "F8"
-    assert ws["L8"].value == "PRAZO DO ESCRITÓRIO" and ws["L9"].value == "PARTE CONTRÁRIA"
-    assert wb["Fora da Agenda"]["L8"].value == "FORA DA AGENDA"
+    assert ws["M8"].value == "PRAZO DO ESCRITÓRIO" and ws["M9"].value == "PARTE CONTRÁRIA"
+    assert wb["Fora da Agenda"]["M8"].value == "FORA DA AGENDA"
     assert wb["Pendentes"]["A7"].value == "Prazo" and wb["Pendentes"]["A8"].value is None
 
 
@@ -45,7 +45,7 @@ def test_ordem_novo_conferir_escritorio_contraria(tmp_path):
               linha(destino="PRAZO DO ESCRITÓRIO", prazo=date(2026, 10, 26), ids="e")]
     gerar_paralela(linhas, [], caminho, date(2026, 10, 16), {"atos": 5, "processos": 1, "ids": 5, "ok": True})
     ws = openpyxl.load_workbook(caminho)["Lançamentos"]
-    assert [ws.cell(r, 22).value for r in range(8, 13)] == ["d", "c", "e", "b", "a"]
+    assert [ws.cell(r, 23).value for r in range(8, 13)] == ["d", "c", "e", "b", "a"]
 
 
 def test_conciliacao_falha_vai_para_o_topo(tmp_path):

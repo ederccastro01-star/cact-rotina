@@ -16,9 +16,18 @@ import openpyxl
 
 # colunas da Agenda oficial (spec, Global Constraints): N já existe (Polo conferido); O–S são novas
 COL = {"polo_conferido": 14, "id_djen": 15, "link": 16, "origem": 17, "lote": 18, "conferir": 19}
-# colunas da Paralela (paralela.planilha: A–K + L..X)
-COL_PARALELA = {"destino": 12, "decisao": 13, "motivo": 14, "link": 21, "ids": 22, "lote": 23, "obs": 24, "prazo_calculado": 25,
-                "corrigir_j": 26}
+# colunas da Paralela (paralela.planilha: A–K + controle). Desenho de 20/11/2026: L = Despacho anterior, link em O.
+# As Paralelas anteriores têm o desenho antigo (COL_PARALELA_ANTIGA): NUNCA usar estas posições direto num arquivo;
+# quem lê ou grava acha a coluna pelo cabeçalho da linha 7 (colunas_do_cabecalho / colunas_paralela / linha["cols"]).
+CABECALHOS_PARALELA = {"Despacho anterior": "despacho_anterior", "Destino": "destino", "Decisão": "decisao", "Link (teor)": "link",
+                       "Motivo CONFERIR": "motivo", "Polo intimado": "polo", "Intimado(s)": "intimados", "Fonte do polo": "fonte_polo",
+                       "Prazo no texto": "prazo_texto", "Prazo legal": "prazo_legal", "Base legal": "base_legal", "ID DJEN": "ids",
+                       "Lote": "lote", "Observações": "obs", "Prazo calculado": "prazo_calculado", "Corrigir J para": "corrigir_j"}
+COL_PARALELA = {chave: 12 + i for i, chave in enumerate(CABECALHOS_PARALELA.values())}
+COL_PARALELA_ANTIGA = {"destino": 12, "decisao": 13, "motivo": 14, "polo": 15, "intimados": 16, "fonte_polo": 17, "prazo_texto": 18,
+                       "prazo_legal": 19, "base_legal": 20, "link": 21, "ids": 22, "lote": 23, "obs": 24, "prazo_calculado": 25,
+                       "corrigir_j": 26}
+LINHA_CABECALHO = 7
 MARCA_APLICADA = "✔"
 DECISOES_QUE_AGENDAM = {"agendar", "corrigir e agendar"}
 ABAS_LIDAS = ("Lançamentos", "Pendentes")
@@ -71,32 +80,69 @@ def _ids(valor) -> list[str]:
     return out
 
 
+def colunas_do_cabecalho(cabecalho) -> dict[str, int]:
+    """chave → coluna (1 = A), pelos títulos da linha 7 da aba. Serve aos dois desenhos da Paralela (o de antes e o de
+    depois de 20/11/2026). Linha sem título reconhecível (aba que não veio de `paralela.planilha`): desenho atual."""
+    cols = {}
+    for i, titulo in enumerate(cabecalho or (), start=1):
+        chave = CABECALHOS_PARALELA.get(str(titulo or "").strip())
+        if chave and chave not in cols:
+            cols[chave] = i
+    return cols if "ids" in cols and "decisao" in cols else dict(COL_PARALELA)
+
+
+def colunas_paralela(caminho: str) -> dict[str, dict[str, int]]:
+    """aba → colunas daquele arquivo (lido por cópia). Use antes de gravar numa Paralela: o arquivo pode ser do desenho antigo."""
+    from pc import arquivos
+    tmp = arquivos.copia_temporaria(caminho, prefixo="paralela_")
+    wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
+    try:
+        return {ws.title: colunas_do_cabecalho(next(ws.iter_rows(min_row=LINHA_CABECALHO, max_row=LINHA_CABECALHO, values_only=True), ()))
+                for ws in wb.worksheets}
+    finally:
+        wb.close()
+        shutil.rmtree(os.path.dirname(tmp), ignore_errors=True)
+
+
 def ler_paralela(caminho: str) -> list[dict]:
-    """Lê Lançamentos e Pendentes de uma CÓPIA do arquivo (o original pode estar aberto no Excel)."""
+    """Lê Lançamentos e Pendentes de uma CÓPIA do arquivo (o original pode estar aberto no Excel). As colunas de
+    controle são achadas pelo cabeçalho; cada linha leva em "cols" o mapa de colunas da sua aba, para quem for gravar."""
     from pc import arquivos
     tmp = arquivos.copia_temporaria(caminho, prefixo="paralela_")   # CopyFileW: arquivo aberto no Excel com AutoSave
-    wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
+    wb = openpyxl.load_workbook(tmp, data_only=True)                # sem read_only: o endereço do link está no hyperlink da célula
     out = []
     try:
         for aba in ABAS_LIDAS:
             if aba not in wb.sheetnames:
                 continue
-            for i, row in enumerate(wb[aba].iter_rows(min_row=PRIMEIRA_LINHA, values_only=True), start=PRIMEIRA_LINHA):
+            ws = wb[aba]
+            cols = colunas_do_cabecalho([c.value for c in ws[LINHA_CABECALHO]])
+            for i, celulas in enumerate(ws.iter_rows(min_row=PRIMEIRA_LINHA), start=PRIMEIRA_LINHA):
+                row = [c.value for c in celulas]
                 if not row or len(row) < 5 or not row[4]:
                     continue
-                g = lambda c: row[c - 1] if len(row) >= c else None  # noqa: E731
+
+                def g(chave, row=row, cols=cols):
+                    c = cols.get(chave)
+                    return row[c - 1] if c and len(row) >= c else None
+
+                c_link = cols.get("link")
+                cel_link = celulas[c_link - 1] if c_link and len(celulas) >= c_link else None
+                link = (cel_link.hyperlink.target if cel_link is not None and cel_link.hyperlink else None) or g("link")
+                cj = str(g("corrigir_j") or "")
                 out.append({
-                    "linha": i, "aba": aba, "a_k": [g(c) for c in range(1, 12)],
-                    "decisao": str(g(COL_PARALELA["decisao"]) or "").strip(),
-                    "motivo": str(g(COL_PARALELA["motivo"]) or ""),
-                    "link": str(g(COL_PARALELA["link"]) or ""),
-                    "ids": _ids(g(COL_PARALELA["ids"])),
-                    "lote": str(g(COL_PARALELA["lote"]) or "").strip(),
-                    "destino": str(g(COL_PARALELA["destino"]) or ""),
-                    "origem": str(g(COL_PARALELA["obs"]) or "").strip(),
-                    "prazo_calculado": g(COL_PARALELA["prazo_calculado"]),
-                    "corrigir_j": None if str(g(COL_PARALELA["corrigir_j"]) or "").startswith(MARCA_APLICADA) else normalizar_j(g(COL_PARALELA["corrigir_j"])),
-                    "j_corrigida": str(g(COL_PARALELA["corrigir_j"]) or "").startswith(MARCA_APLICADA),
+                    "linha": i, "aba": aba, "cols": cols, "a_k": row[:11] + [None] * (11 - len(row[:11])),
+                    "decisao": str(g("decisao") or "").strip(),
+                    "motivo": str(g("motivo") or ""),
+                    "link": str(link or ""),
+                    "ids": _ids(g("ids")),
+                    "lote": str(g("lote") or "").strip(),
+                    "destino": str(g("destino") or ""),
+                    "origem": str(g("obs") or "").strip(),
+                    "prazo_calculado": g("prazo_calculado"),
+                    "despacho_anterior": str(g("despacho_anterior") or ""),
+                    "corrigir_j": None if cj.startswith(MARCA_APLICADA) else normalizar_j(cj),
+                    "j_corrigida": cj.startswith(MARCA_APLICADA),
                 })
     finally:
         wb.close()

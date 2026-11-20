@@ -8,3 +8,4 @@ pc/*.log
 pc/vigia.lock
 pc/push_ledger.json
 pc/transporte.lock
+pc/rodar_local.lock

@@ -42,6 +42,31 @@ def nome_destino_paralela(nome: str, existe: bool, agora: datetime) -> str:
     return f"{base} (reprocessada {agora:%Hh%M}){ext}"
 
 
+def baixar_paralelas_anteriores(tok, base: str, base_cfg: dict, hoje, pasta: str, dias: int = 14) -> str:
+    """Baixa para `pasta` a Paralela mais recente (até `dias` dias atrás) que tem a aba de parceiros; as que não têm
+    (anteriores a 20/11/2026 ou criadas pelo PC no fim de semana) são puladas. Devolve `pasta`."""
+    from paralela.parceiros import ler_aba
+    os.makedirs(pasta, exist_ok=True)
+    sub = f"{base}/{base_cfg.get('subpasta_paralela', 'CACT - Agenda Paralela')}"
+    for n in range(1, dias + 1):
+        d = hoje - timedelta(days=n)
+        nome = f"CACT - Agenda Paralela {d:%d-%m-%Y}.xlsx"
+        if not od.existe(tok, f"{sub}/{nome}"):
+            continue
+        destino = os.path.join(pasta, nome)
+        with open(destino, "wb") as fh:
+            fh.write(od.download(tok, f"{sub}/{nome}"))
+        try:
+            tem = ler_aba(destino) is not None
+        except Exception:  # noqa: BLE001 — arquivo ilegível: tenta o anterior
+            tem = False
+        if tem:
+            cr.log(f"Lista de parceiros continua de: {nome}")
+            break
+        os.remove(destino)
+    return pasta
+
+
 def garantir_keepalive():
     """Instala um 'mantenha-ativo' leve para a Oracle NÃO desligar a máquina
     Always Free por ociosidade. Mantém a CPU acima do limiar de ~20% em parte
@@ -101,6 +126,12 @@ def main():
     cfg["arquivo_cadastro"] = os.path.join(tmp, "cadastro.xlsx")
     cfg["pasta_saida"] = out
     cfg["pasta_historico"] = out
+
+    # 2b) Paralelas anteriores: a aba "Parceiros - Liquidação" é acumulada e continua da mais recente que a tiver
+    try:
+        cfg["paralelas_anteriores"] = baixar_paralelas_anteriores(tok, base, base_cfg, hoje, os.path.join(tmp, "anteriores"))
+    except Exception as e:  # noqa: BLE001
+        cr.log(f"ATENÇÃO: não baixei a Paralela anterior ({e}); a lista de parceiros recomeça só com as intimações de hoje.")
 
     # 3) roda a rotina
     gerados = cr.executar_rotina(cfg, data_disp=hoje, fonte="djen")
