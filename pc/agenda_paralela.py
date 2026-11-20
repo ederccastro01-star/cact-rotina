@@ -180,11 +180,12 @@ def _escrever_linha_paralela(ws_openpyxl, r: int, l: dict, cols: dict) -> None:
         ws_openpyxl.cell(r, c, f'=IF(A{r}="","",A{r})' if c == 2 else v)
     for c, v in _valores_pendente(l, cols).items():
         ws_openpyxl.cell(r, c, v)
-    # linha de publicação: centro na vertical, como em Lançamentos (pedido do advogado, 20/11/2026)
+    # linha de publicação como em Lançamentos (pedido do advogado, 20/11/2026): texto corrido justificado, o resto
+    # centralizado, centro na vertical; sem altura gravada, o Excel ajusta a linha ao texto
     from openpyxl.styles import Alignment
+    justificadas = {11} | {cols[k] for k in ("despacho_anterior", "motivo", "obs") if cols.get(k)}
     for c in range(1, max(cols.values()) + 1):
-        cel = ws_openpyxl.cell(r, c)
-        cel.alignment = Alignment(horizontal=cel.alignment.horizontal, vertical="center", wrap_text=True)
+        ws_openpyxl.cell(r, c).alignment = Alignment(horizontal="justify" if c in justificadas else "center", vertical="center", wrap_text=True)
 
 
 def montar_pendentes(cfg: dict, hoje: date, dias: int = 30) -> list[dict]:
@@ -220,8 +221,13 @@ def montar_pendentes(cfg: dict, hoje: date, dias: int = 30) -> list[dict]:
                     com(set_cell, ws, r, c, v)
             for c, v in _valores_pendente(l, cols).items():
                 com(set_text if c == cols["ids"] else set_cell, ws, r, c, v)
-            try:        # centro na vertical (xlCenter = -4108), como em Lançamentos
+            try:        # como em Lançamentos: centro (xlCenter = -4108), texto corrido justificado (xlJustify = -4130), altura automática
                 com(lambda r=r: setattr(ws.Rows(r), "VerticalAlignment", -4108))
+                com(lambda r=r: setattr(ws.Rows(r), "HorizontalAlignment", -4108))
+                for cj in {11} | {cols[k] for k in ("despacho_anterior", "motivo", "obs") if cols.get(k)}:
+                    com(lambda r=r, cj=cj: setattr(ws.Cells(r, cj), "HorizontalAlignment", -4130))
+                com(lambda r=r: setattr(ws.Rows(r), "WrapText", True))
+                com(lambda r=r: ws.Rows(r).AutoFit())
             except Exception:  # noqa: BLE001 — só aparência
                 pass
     else:

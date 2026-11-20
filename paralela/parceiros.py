@@ -349,7 +349,7 @@ def escrever_aba(wb, registros: list[Registro], data_disp: date, origem: str = "
         ws.column_dimensions[get_column_letter(i)].width = w
     ws.row_dimensions[PRIMEIRA_LINHA - 1].height = 30
     ws.freeze_panes = f"E{PRIMEIRA_LINHA}"
-    esquerda = {5, 6, 7, 9, 11}
+    justificadas = {CAMPOS.index("resumo") + 1, CAMPOS.index("observacoes") + 1}      # texto corrido; o resto centralizado
     for row, r in enumerate(registros, start=PRIMEIRA_LINHA):
         fill = PatternFill("solid", fgColor=_COR.get(r.situacao, "E2EFDA"))
         for i, campo in enumerate(CAMPOS, start=1):
@@ -359,7 +359,7 @@ def escrever_aba(wb, registros: list[Registro], data_disp: date, origem: str = "
             c = ws.cell(row=row, column=i, value=v if v != "" else None)
             c.font = Font(name="Courier New" if campo == "processo" else "Arial", size=10, bold=(campo == "situacao" and r.situacao == VENCIDO))
             c.border = _BORDA; c.fill = fill
-            c.alignment = Alignment(horizontal="left" if i in esquerda else "center", vertical="center", wrap_text=True)
+            c.alignment = Alignment(horizontal="justify" if i in justificadas else "center", vertical="center", wrap_text=True)
             if campo in ("detectado", "prazo"):
                 c.number_format = "dd/mm/yy;@"
             if campo in ("processo", "ids"):
@@ -368,7 +368,7 @@ def escrever_aba(wb, registros: list[Registro], data_disp: date, origem: str = "
                 c.hyperlink = v; c.value = "abrir teor"
                 c.font = Font(name="Arial", size=9, color="0563C1", underline="single")
         ws.cell(row=row, column=CAMPOS.index("observacoes") + 1).fill = PatternFill("solid", fgColor="FFFF00")
-        ws.row_dimensions[row].height = 54
+        # sem altura gravada: o Excel ajusta a linha ao texto quando abre
     n_v = sum(1 for r in registros if r.situacao == VENCIDO); n_a = sum(1 for r in registros if r.situacao == AGUARDANDO)
     ws.cell(row=PRIMEIRA_LINHA + len(registros) + 1, column=1,
             value=f"{len(registros)} intimação(ões) na lista: {n_v} com prazo vencido sem chegar, {n_a} aguardando, "

@@ -219,7 +219,14 @@ def test_linhas_de_publicacao_centradas_na_vertical(tmp_path):
     wb = openpyxl.load_workbook(c)
     for aba, colunas in (("Lançamentos", 27), ("Fora da Agenda", 27), (pa.ABA, 13)):
         assert all(wb[aba].cell(8, i).alignment.vertical == "center" for i in range(1, colunas + 1)), aba
-    assert wb["Lançamentos"]["K8"].alignment.horizontal == "left" and wb["Lançamentos"]["A8"].alignment.horizontal == "center"
+    ws = wb["Lançamentos"]
+    por_coluna = {c.column_letter: c.alignment.horizontal for c in ws[8]}
+    assert {l for l, h in por_coluna.items() if h == "justify"} == {"K", "L", "P", "Y"}          # texto corrido
+    assert all(h == "center" for l, h in por_coluna.items() if l not in "KLPY")
+    assert ws.row_dimensions[8].height is None and wb["Fora da Agenda"].row_dimensions[8].height is None      # o Excel ajusta ao abrir
+    wp = wb[pa.ABA]
+    assert wp["I8"].alignment.horizontal == "justify" and wp["K8"].alignment.horizontal == "justify" and wp["D8"].alignment.horizontal == "center"
+    assert wp.row_dimensions[8].height is None
 
 
 def test_pendentes_tambem_ficam_centradas(cfg, tmp_path, monkeypatch):
@@ -232,3 +239,4 @@ def test_pendentes_tambem_ficam_centradas(cfg, tmp_path, monkeypatch):
     assert len(ap.montar_pendentes(cfg, date(2026, 11, 19))) == 1
     ws = openpyxl.load_workbook(hoje)["Pendentes"]
     assert ws["W8"].value == "1" and all(ws.cell(8, i).alignment.vertical == "center" for i in range(1, 28))
+    assert ws["K8"].alignment.horizontal == "justify" and ws["P8"].alignment.horizontal == "justify" and ws["E8"].alignment.horizontal == "center"

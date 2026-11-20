@@ -42,8 +42,11 @@ AMARELO = PatternFill("solid", fgColor="FFFF00")
 THIN = Side(style="thin", color="BFBFBF")
 BORDA = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 CENTRO = Alignment(horizontal="center", vertical="center", wrap_text=True)
-ESQ = Alignment(horizontal="left", vertical="center", wrap_text=True)      # linhas de publicação: sempre centro na vertical (20/11/2026)
-COLS_ESQ = {6, 7, 8, 11, C_DESP_ANT, COL["Motivo CONFERIR"], COL["Intimado(s)"], COL["Observações"]}
+# Linhas de publicação (pedido do advogado, 20/11/2026): texto corrido JUSTIFICADO (resumo, despacho anterior, motivo,
+# observações); tudo o mais centralizado; sempre centro na vertical. A altura da linha NÃO é gravada: sem altura no
+# arquivo o Excel ajusta cada linha ao texto quando abre (conferido numa instância do Excel em 20/11/2026).
+JUST = Alignment(horizontal="justify", vertical="center", wrap_text=True)
+COLS_JUST = {COL["Despacho"], C_DESP_ANT, COL["Motivo CONFERIR"], COL["Observações"]}
 
 LEIA_ME = [
     ("O que é este arquivo", True),
@@ -129,7 +132,7 @@ def _cabecalho(ws, titulo: str, subtitulo: str):
         c.font = HDR_FONT; c.fill = HDR_FILL if i <= 11 else CTRL_FILL; c.alignment = CENTRO; c.border = BORDA
         ws.column_dimensions[get_column_letter(i)].width = w
     ws.row_dimensions[7].height = 30
-    ws.freeze_panes = "F8"
+    ws.freeze_panes = "B8"      # fixa só a coluna A (Prazo) e o cabeçalho (pedido do advogado, 20/11/2026; antes F8)
 
 
 def _escrever(ws, row: int, l: Linha):
@@ -145,7 +148,7 @@ def _escrever(ws, row: int, l: Linha):
             v = limpar_texto(v)
         c = ws.cell(row=row, column=i, value=v)
         c.font = COURIER if i == 5 else ARIAL; c.border = BORDA; c.fill = fill
-        c.alignment = ESQ if i in COLS_ESQ else CENTRO
+        c.alignment = JUST if i in COLS_JUST else CENTRO
         if i in (1, 4, C_PRAZO_CALC):
             c.number_format = "dd/mm/yy;@"
         if i == 2:
@@ -157,7 +160,6 @@ def _escrever(ws, row: int, l: Linha):
             c.font = Font(name="Arial", size=9, color="0563C1", underline="single")
     ws.cell(row=row, column=C_DECISAO).fill = AMARELO
     ws.cell(row=row, column=C_CORRIGIR_J).fill = AMARELO
-    ws.row_dimensions[row].height = 54
 
 
 def _aba(wb, titulo, subtitulo, nome, linhas: list[Linha], ordenar=True):

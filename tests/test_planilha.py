@@ -32,7 +32,7 @@ def test_gerar_paralela_layout(tmp_path):
     assert "N8:N9" in str(dv[0].sqref) and dv[1].formula1 == '"AUTOR(A),RÉU"' and "AA8:AA9" in str(dv[1].sqref)
     assert ws["N8"].fill.fgColor.rgb.endswith("FFFF00")
     assert ws["W8"].value == "1;2"
-    assert ws.freeze_panes == "F8"
+    assert ws.freeze_panes == "B8"
     assert ws["M8"].value == "PRAZO DO ESCRITÓRIO" and ws["M9"].value == "PARTE CONTRÁRIA"
     assert wb["Fora da Agenda"]["M8"].value == "FORA DA AGENDA"
     assert wb["Pendentes"]["A7"].value == "Prazo" and wb["Pendentes"]["A8"].value is None
