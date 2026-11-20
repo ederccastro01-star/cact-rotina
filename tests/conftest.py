@@ -53,6 +53,8 @@ def cfg(tmp_path):
         base = json.load(fh)
     c = dict(base)
     c["anthropic_api_key"] = ""
+    # o config real tem pc.gerar_local ligado desde a virada de 20/11/2026: nos testes o vigia nunca consulta o DJEN de verdade
+    c["pc"] = dict(base.get("pc") or {}, gerar_local=False)
     c["oabs_escritorio"] = ["23147/GO", "51509/GO", "26734/GO", "8060/GO"]
     c.setdefault("processos_monitorados", [])
     # nunca tocar no Outlook nem no razão real durante os testes (um teste do vigia disparou coleta real em 17/10)

@@ -78,7 +78,7 @@ def test_ensaio_em_pasta_separada_nao_toca_nas_pastas_reais(cfg, tmp_path, monke
 
 def test_vigia_gera_no_pc_so_com_a_chave_ligada(cfg, tmp_path, monkeypatch):
     _pc(cfg, tmp_path)
-    cfg["pc"]["hora_alerta_sem_arquivo"] = "23:59"
+    cfg["pc"]["hora_alerta_sem_arquivo"] = "23:59"; cfg["pc"]["gerar_local"] = False      # o config real está ligado desde a virada
     chamadas = []
     monkeypatch.setattr(rl, "rodar", lambda c, dia: chamadas.append(dia) or [])
     monkeypatch.setattr(ap, "verificar_persistencia", lambda *a, **k: [])
@@ -149,3 +149,51 @@ def test_tres_leituras_vao_pelo_claude_code(monkeypatch):
     assert rotulos == ["Claude Code (Paralela)", "Claude Code (Parceiros)", "Claude Code (Cruzamento)"]
     monkeypatch.setattr(ia, "chamar_claude_code", lambda *a, **k: None)
     assert ia.classificar("t", "AUTOR", "AUTOR", [], cfg) is None and cr.classificar_claude("t", cfg) is None
+
+
+# ----------------------------------------------------------------------------- cadernos do DJEN (busca em zero)
+def test_busca_em_zero_le_os_cadernos(monkeypatch):
+    from pc import cadernos
+    lidos = []
+    monkeypatch.setattr(cadernos, "varrer_cadernos", lambda d, cad, extra: lidos.append(d) or [{"processo": "p", "texto": "t", "item": {}}])
+    com_resultado = cadernos.busca_com_cadernos(lambda cfg, d, cad, extra: [{"processo": "x"}])
+    assert com_resultado({}, date(2026, 11, 19), {}, []) == [{"processo": "x"}] and lidos == []      # busca normal: cadernos nem são lidos
+    em_zero = cadernos.busca_com_cadernos(lambda cfg, d, cad, extra: [])
+    assert len(em_zero({}, date(2026, 11, 19), {}, [])) == 1 and lidos == [date(2026, 11, 19)]
+
+
+def test_caderno_filtra_pelo_cadastro(tmp_path):
+    import zipfile
+    from pc import cadernos
+    itens = [{"id": 1, "numero_processo": "00000011120265180001", "texto": "do processo cadastrado", "destinatarioadvogados": []},
+             {"id": 2, "numero_processo": "00000022220265180002", "texto": "da OAB cadastrada",
+              "destinatarioadvogados": [{"advogado": {"nome": "Outro", "numero_oab": "0014725", "uf_oab": "go"}}]},
+             {"id": 3, "numero_processo": "00000033320265180003", "texto": "do nome cadastrado",
+              "destinatarioadvogados": [{"advogado": {"nome": "José  da Sílva", "numero_oab": "1", "uf_oab": "SP"}}]},
+             {"id": 4, "numero_processo": "00000044420265180004", "texto": "de ninguém", "destinatarioadvogados": []},
+             {"id": 2, "numero_processo": "00000022220265180002", "texto": "repetida", "destinatarioadvogados": [
+                 {"advogado": {"nome": "Outro", "numero_oab": "14725", "uf_oab": "GO"}}]}]
+    zp = str(tmp_path / "c.zip")
+    with zipfile.ZipFile(zp, "w") as z:
+        z.writestr("caderno.json", json.dumps({"items": itens}))
+    oabs, nomes, procs = cadernos.filtros({"oabs": [{"uf": "GO", "oab": "14725"}], "nomes": ["JOSE DA SILVA"],
+                                           "processos": ["0000001-11.2026.5.18.0001"]}, [])
+    lidas, pubs = cadernos.ler_zip(zp, oabs, nomes, procs, set())
+    assert lidas == 5 and [p["item"]["id"] for p in pubs] == [1, 2, 3]
+    assert pubs[0]["item"]["numeroprocessocommascara"] == "0000001-11.2026.5.18.0001" and pubs[1]["texto"] == "da OAB cadastrada"
+
+
+def test_cadernos_incompletos_nao_geram_nada_e_devolvem_a_busca(cfg, tmp_path, monkeypatch):
+    from pc import cadernos
+    _pc(cfg, tmp_path)
+    monkeypatch.setattr(rl, "LOG", str(tmp_path / "rodar.log")); monkeypatch.setattr(rl, "TRAVA", str(tmp_path / "rodar.lock"))
+    original = cr.buscar_djen
+
+    def rotina(c, data_disp=None, fonte="djen", arquivo=None, sem_ia=False):
+        assert cr.buscar_djen is not original                                           # durante a rotina a busca está embrulhada
+        raise cadernos.CadernosIncompletos("TJSP/D: Em processamento")
+
+    monkeypatch.setattr(cr, "executar_rotina", rotina)
+    assert rl.rodar(cfg, date(2026, 11, 19), so_o_dia=True) == []
+    assert cr.buscar_djen is original
+    assert "cadernos ainda incompletos (TJSP/D: Em processamento)" in open(rl.LOG, encoding="utf-8").read()

@@ -593,6 +593,15 @@ def _transportar_seguro(cfg: dict, caminho: str, espera_s: int = 120, lancar: bo
         soltar_trava(trava)
 
 
+def _dia_util(cfg: dict, dia: date) -> bool:
+    """Feriado do config não tem Paralela: sem aviso de 'arquivo ausente' (em 20/11/2026, feriado, o aviso saiu à toa)."""
+    try:
+        import cact_rotina as cr
+        return bool(cr.eh_util(dia, cr.carregar_feriados(cfg)))
+    except Exception:  # noqa: BLE001
+        return True
+
+
 def gerar_local(cfg: dict) -> bool:
     """True: a Paralela é gerada pelo PC ao ligar (pc.rodar_local), com a leitura pelo Claude Code da assinatura.
     False (padrão): o PC só espera a Paralela que a VM entrega às 5h30."""
@@ -707,7 +716,7 @@ def passo_vigia(cfg: dict, dia: date, agora: datetime, estado: Estado) -> None:
             avisar(f"não gerei a Paralela de hoje no PC: {str(e)[:90]}")
     if not arquivo_pronto(caminho, agora.timestamp()):
         h, m = _hora(cfg)
-        if not estado.avisou_sem_arquivo and (agora.hour, agora.minute) >= (h, m) and agora.weekday() < 5:
+        if not estado.avisou_sem_arquivo and (agora.hour, agora.minute) >= (h, m) and agora.weekday() < 5 and _dia_util(cfg, dia):
             avisar((f"ainda não há Paralela de hoje ({dia:%d/%m}): veja pc\\rodar_local.log" if gerar_local(cfg)
                     else f"VM não entregou a Paralela de hoje ({dia:%d/%m}); continuo esperando"))
             estado.avisou_sem_arquivo = True

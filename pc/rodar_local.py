@@ -89,10 +89,20 @@ def gerar_dia(cfg: dict, dia: date, destinos: dict, sem_ia: bool = False) -> str
     try:
         c = _cfg_do_dia(cfg, tmp, destinos["paralela"], sem_ia)
         _log(f"gerando {dia:%d/%m/%Y} (leitura: {c['ia_via'] or 'regras, sem IA'})")
+        # busca do DJEN em zero (acontece, às vezes por dias) → lê os cadernos; cadernos ainda abertos → nada é gerado
+        # e a próxima tentativa do vigia resolve (a VM fazia isso em /opt/cact-fallback/contingencia.py)
+        from pc import cadernos
+        busca_original = cr.buscar_djen
+        cr.buscar_djen = cadernos.busca_com_cadernos(busca_original)
         try:
             gerados = cr.executar_rotina(c, data_disp=dia, fonte="djen", sem_ia=sem_ia)
+        except cadernos.CadernosIncompletos as e:
+            _log(f"  busca do DJEN em zero e cadernos ainda incompletos ({e}); nada gerado para {dia:%d/%m/%Y}, nova tentativa mais tarde")
+            return None
         except SystemExit as e:              # executar_rotina encerra o processo quando falta a biblioteca requests
             raise RuntimeError(f"a rotina encerrou (código {e.code}); falta a biblioteca 'requests'?") from e
+        finally:
+            cr.buscar_djen = busca_original
         paralela = None
         for caminho in gerados:
             nome = os.path.basename(caminho)
