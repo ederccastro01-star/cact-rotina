@@ -24,7 +24,7 @@ COL = {nome: i for i, nome in enumerate(COLUNAS_AGENDA + COLUNAS_CONTROLE, start
 C_DESP_ANT, C_DECISAO, C_LINK = COL["Despacho anterior"], COL["Decisão"], COL["Link (teor)"]
 C_PRAZO_CALC, C_CORRIGIR_J = COL["Prazo calculado"], COL["Corrigir J para"]
 # larguras como o Excel as MOSTRA (A a Q ditadas pelo advogado); no arquivo vai a largura mostrada + 5/7 (margem da célula)
-LARGURAS_EXCEL = [7.71, 8.00, 13.29, 9.43, 20, 20, 20, 20, 9.71, 9.29, 34, 34, 10.71, 8.29, 8.00, 12.14, 8.29,
+LARGURAS_EXCEL = [7.71, 8.00, 13.29, 9.43, 20, 20, 20, 20, 11.00, 9.29, 33, 33, 11.43, 8.29, 8.00, 12.14, 8.29,
                   34, 16, 10, 10, 13, 22, 22, 30, 12, 14]
 LARGURAS = [round(w + 5 / 7, 2) for w in LARGURAS_EXCEL]
 DECISOES = '"Agendar,Descartar,Corrigir e agendar"'
@@ -42,7 +42,7 @@ AMARELO = PatternFill("solid", fgColor="FFFF00")
 THIN = Side(style="thin", color="BFBFBF")
 BORDA = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 CENTRO = Alignment(horizontal="center", vertical="center", wrap_text=True)
-ESQ = Alignment(horizontal="left", vertical="top", wrap_text=True)
+ESQ = Alignment(horizontal="left", vertical="center", wrap_text=True)      # linhas de publicação: sempre centro na vertical (20/11/2026)
 COLS_ESQ = {6, 7, 8, 11, C_DESP_ANT, COL["Motivo CONFERIR"], COL["Intimado(s)"], COL["Observações"]}
 
 LEIA_ME = [

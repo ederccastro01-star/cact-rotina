@@ -359,7 +359,7 @@ def escrever_aba(wb, registros: list[Registro], data_disp: date, origem: str = "
             c = ws.cell(row=row, column=i, value=v if v != "" else None)
             c.font = Font(name="Courier New" if campo == "processo" else "Arial", size=10, bold=(campo == "situacao" and r.situacao == VENCIDO))
             c.border = _BORDA; c.fill = fill
-            c.alignment = Alignment(horizontal="left" if i in esquerda else "center", vertical="top" if i in esquerda else "center", wrap_text=True)
+            c.alignment = Alignment(horizontal="left" if i in esquerda else "center", vertical="center", wrap_text=True)
             if campo in ("detectado", "prazo"):
                 c.number_format = "dd/mm/yy;@"
             if campo in ("processo", "ids"):

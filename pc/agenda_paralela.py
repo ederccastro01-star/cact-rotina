@@ -180,6 +180,11 @@ def _escrever_linha_paralela(ws_openpyxl, r: int, l: dict, cols: dict) -> None:
         ws_openpyxl.cell(r, c, f'=IF(A{r}="","",A{r})' if c == 2 else v)
     for c, v in _valores_pendente(l, cols).items():
         ws_openpyxl.cell(r, c, v)
+    # linha de publicação: centro na vertical, como em Lançamentos (pedido do advogado, 20/11/2026)
+    from openpyxl.styles import Alignment
+    for c in range(1, max(cols.values()) + 1):
+        cel = ws_openpyxl.cell(r, c)
+        cel.alignment = Alignment(horizontal=cel.alignment.horizontal, vertical="center", wrap_text=True)
 
 
 def montar_pendentes(cfg: dict, hoje: date, dias: int = 30) -> list[dict]:
@@ -215,6 +220,10 @@ def montar_pendentes(cfg: dict, hoje: date, dias: int = 30) -> list[dict]:
                     com(set_cell, ws, r, c, v)
             for c, v in _valores_pendente(l, cols).items():
                 com(set_text if c == cols["ids"] else set_cell, ws, r, c, v)
+            try:        # centro na vertical (xlCenter = -4108), como em Lançamentos
+                com(lambda r=r: setattr(ws.Rows(r), "VerticalAlignment", -4108))
+            except Exception:  # noqa: BLE001 — só aparência
+                pass
     else:
         wb = openpyxl.load_workbook(destino)
         ws = wb["Pendentes"]

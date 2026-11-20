@@ -140,7 +140,7 @@ def test_larguras_e_despacho_anterior_na_coluna_L(tmp_path):
     ws = openpyxl.load_workbook(c)["Lançamentos"]
     assert ws["L7"].value == "Despacho anterior" and ws["L8"].value == "LS entregue em 03/11"
     assert ws["O7"].value == "Link (teor)" and ws["O8"].value == "abrir teor" and ws["O8"].hyperlink.target == "https://x/1"
-    pedidas = [7.71, 8.00, 13.29, 9.43, 20, 20, 20, 20, 9.71, 9.29, 34, 34, 10.71, 8.29, 8.00, 12.14, 8.29]      # A a Q, como o Excel mostra
+    pedidas = [7.71, 8.00, 13.29, 9.43, 20, 20, 20, 20, 11.00, 9.29, 33, 33, 11.43, 8.29, 8.00, 12.14, 8.29]      # A a Q, como o Excel mostra
     assert LARGURAS_EXCEL[:17] == pedidas
     for letra, w in zip("ABCDEFGHIJKLMNOPQ", pedidas):
         assert abs(ws.column_dimensions[letra].width - (w + 5 / 7)) < 0.006
@@ -210,3 +210,25 @@ def test_linha_transportada_leva_o_endereco_do_teor(tmp_path):
     gerar_paralela([_linha("5")], [], c, date(2026, 11, 19), {"ok": True})
     l = tr.ler_paralela(c)[0]
     assert tr.valores_agenda(l, "lote")[tr.COL["link"]] == "https://x/5"
+
+
+def test_linhas_de_publicacao_centradas_na_vertical(tmp_path):
+    c = str(tmp_path / "p.xlsx")
+    gerar_paralela([_linha("1", despacho_anterior="x")], [_linha("2", destino="FORA DA AGENDA")], c, date(2026, 11, 19), {"ok": True},
+                   [_reg("3", "0000003-11.2026.5.18.0003", date(2026, 11, 25))])
+    wb = openpyxl.load_workbook(c)
+    for aba, colunas in (("Lançamentos", 27), ("Fora da Agenda", 27), (pa.ABA, 13)):
+        assert all(wb[aba].cell(8, i).alignment.vertical == "center" for i in range(1, colunas + 1)), aba
+    assert wb["Lançamentos"]["K8"].alignment.horizontal == "left" and wb["Lançamentos"]["A8"].alignment.horizontal == "center"
+
+
+def test_pendentes_tambem_ficam_centradas(cfg, tmp_path, monkeypatch):
+    cfg["pc"] = dict(cfg.get("pc") or {}, pasta_controladoria=str(tmp_path))
+    os.makedirs(tmp_path / "CACT - Agenda Paralela", exist_ok=True)
+    monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None)
+    gerar_paralela([_linha("1")], [], ap.caminho_paralela(cfg, date(2026, 11, 18)), date(2026, 11, 18), {"ok": True})
+    hoje = ap.caminho_paralela(cfg, date(2026, 11, 19))
+    gerar_paralela([_linha("2")], [], hoje, date(2026, 11, 19), {"ok": True})
+    assert len(ap.montar_pendentes(cfg, date(2026, 11, 19))) == 1
+    ws = openpyxl.load_workbook(hoje)["Pendentes"]
+    assert ws["W8"].value == "1" and all(ws.cell(8, i).alignment.vertical == "center" for i in range(1, 28))
