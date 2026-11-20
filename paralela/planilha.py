@@ -50,7 +50,7 @@ COLS_JUST = {COL["Despacho"], C_DESP_ANT, COL["Motivo CONFERIR"], COL["Observaç
 
 LEIA_ME = [
     ("O que é este arquivo", True),
-    ("Agenda Paralela do dia, gerada às 5h30 pela rotina do CACT a partir das publicações do DJEN. Toda publicação de processo "
+    ("Agenda Paralela do dia, gerada pela rotina do CACT no computador do escritório, ao ligar, a partir das publicações do DJEN. Toda publicação de processo "
      "do escritório virou uma linha; nada foi gravado na Agenda oficial. As colunas A a K têm o formato da Agenda; de L em "
      "diante são controle. A coluna L repete o último despacho do processo na aba Prazos Feitos da Agenda.", False),
     ("", False),
@@ -59,7 +59,7 @@ LEIA_ME = [
      "ESCRITÓRIO; cinza = PARTE CONTRÁRIA, só para conhecimento.", False),
     ("2. Preencha a coluna N (Decisão): Agendar (A), Descartar (D) ou Corrigir e agendar (C). Em 'Corrigir e agendar', "
      "ajuste antes a data (A), a peça (C) ou a nota (K) na própria linha.", False),
-    ("3. Salve. O script do PC grava as linhas 'Agendar' e 'Corrigir e agendar' na aba Publicações da Agenda oficial, "
+    ("3. Salve e clique no atalho 'Transportar Paralela agora' (Área de Trabalho). O script do PC grava as linhas 'Agendar' e 'Corrigir e agendar' na aba Publicações da Agenda oficial, "
      "copiando A a K como estão, e carimba a coluna X (Lote) com 'Transportado em ...'.", False),
     ("4. Linha sem decisão não se perde: amanhã aparece na aba Pendentes e no aviso da manhã.", False),
     ("", False),
@@ -191,7 +191,7 @@ def gerar_paralela(lancamentos: list[Linha], fora: list[Linha], caminho: str, da
     wl.column_dimensions["A"].width = 140
 
     ws, row = _aba(wb, f"CACT - Agenda Paralela {data_disp:%d-%m-%Y}",
-                   "Gerada às 5h30 pela rotina do CACT. Ordem: PROCESSO NOVO e CONFERIR no topo; depois PRAZO DO ESCRITÓRIO "
+                   "Gerada pela rotina do CACT ao ligar o computador. Ordem: PROCESSO NOVO e CONFERIR no topo; depois PRAZO DO ESCRITÓRIO "
                    "por data; PARTE CONTRÁRIA por último. Polo e data por código; peça e resumo pela IA.",
                    "Lançamentos", lancamentos)
     n_esc = sum(1 for l in lancamentos if l.destino == "PRAZO DO ESCRITÓRIO")
