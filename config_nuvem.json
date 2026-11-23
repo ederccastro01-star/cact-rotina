@@ -120,7 +120,9 @@
     "gerar_local": true,
     "ia_via": "claude_code",
     "dias_recuperar": 7,
-    "_comentario_gerar_local": "gerar_local true (pc.virada): a Paralela é gerada pelo PC ao ligar (pc.rodar_local), leitura pelo Claude Code da assinatura; os agendamentos da VM ficam em /opt/cact/desligado. NUNCA os dois ligados juntos."
+    "_comentario_gerar_local": "gerar_local true (pc.virada): a Paralela é gerada pelo PC ao ligar (pc.rodar_local), leitura pelo Claude Code da assinatura; os agendamentos da VM ficam em /opt/cact/desligado. NUNCA os dois ligados juntos.",
+    "ia_paralelo": 8,
+    "_comentario_ia_paralelo": "leituras simultâneas pelo Claude Code (23/11/2026, pedido do advogado; antes 4). Segunda com 330 publicações levou 13 min com 4."
   },
   "tabela_publicacoes": "Tabela1",
   "tabela_prazos_feitos": "Tabela2",
