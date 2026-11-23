@@ -36,7 +36,7 @@ def test_gerar_sintetico_sem_ia(sintetico, cfg, tmp_path, monkeypatch):
     assert a1[COL["destino"] - 1] == "PRAZO DO ESCRITÓRIO"
     assert a1[COL["prazo"] - 1].date() == date(2026, 10, 26)          # 5 dias do texto a partir de 19/10
     assert a1[COL["peca"] - 1].startswith("Atenção! Honorários - ")
-    assert a1[COL["cliente"] - 1] == "AUTOR(A)" and a1[COL["despacho"] - 1].startswith("Intimado: AUTOR TESTE")
+    assert a1[COL["cliente"] - 1] == "AUTOR(A)" and a1[COL["despacho"] - 1].startswith("Acompanhamento\nIntimado: AUTOR TESTE")
     a2 = por_ids["9002"]
     assert a2[COL["destino"] - 1] == "PARTE CONTRÁRIA" and a2[COL["peca"] - 1].endswith(" - aguardar")
     a6 = por_ids["9006"]

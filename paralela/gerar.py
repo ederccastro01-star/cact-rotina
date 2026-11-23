@@ -38,6 +38,11 @@ def _sem_acento_lower(s: str) -> str:
     return unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
 
 
+# Pedido do advogado (23/11/2026): o resumo da IA na coluna K abre com a palavra "Acompanhamento" na primeira linha,
+# como o Cruzamento já faz e como o texto vai para a coluna K da Agenda no transporte.
+ROTULO_DESPACHO = "Acompanhamento"
+
+
 def montar_linha(ato, refproc, cfg, publicado: date, cls: dict, dest) -> Linha:
     peca = (cls.get("peca") or "Manifestação").strip()
     if dest.rotulo == CONTRARIA and not _sem_acento_lower(peca).endswith("- aguardar"):
@@ -56,7 +61,7 @@ def montar_linha(ato, refproc, cfg, publicado: date, cls: dict, dest) -> Linha:
         prazo=pr.data, peca=peca, publicado=publicado, processo=ato.processo,
         reclamante=str(ref.get("Reclamante") or _nome(ato, "A")), reclamado=str(ref.get("Reclamado") or _nome(ato, "P")),
         advogado=str(ref.get("Advogado") or ""), prioridade=str(ref.get("Prioridade") or "NORMAL"), cliente=cliente,
-        despacho=formatar_resumo(cls, ato.intimados, polos_str),
+        despacho=ROTULO_DESPACHO + "\n" + formatar_resumo(cls, ato.intimados, polos_str),
         destino=dest.rotulo, motivo="; ".join(dest.motivos + pr.alertas), polo_intimado=_polo_txt(ato.polos),
         intimados=", ".join(ato.intimados)[:120], fonte_polo=dest.fonte_polo,
         prazo_texto=n_texto, prazo_legal=pr.legal, base_legal=pr.base, link=ato.link, ids=";".join(ato.ids),
