@@ -207,7 +207,7 @@ def test_paralelas_com_decisao_sem_lote(cfg, tmp_path, monkeypatch):
 
 def test_passo_vigia_transporta_paralelas_anteriores(cfg, tmp_path, monkeypatch):
     _cfg_pc(cfg, tmp_path); monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None)
-    monkeypatch.setattr(ap, "avisar", lambda m: None); monkeypatch.setattr(ap, "abrir_para_o_advogado", lambda c, n=0: None)
+    monkeypatch.setattr(ap, "avisar", lambda m: None); monkeypatch.setattr(ap, "abrir_para_o_advogado", lambda c, n=0, k=0: None)
     transportadas = []
     monkeypatch.setattr(ap, "transportar", lambda cfg_, par, agenda: transportadas.append(os.path.basename(par)))
     ontem = _paralela(cfg, date(2026, 10, 15), [_linha("1")], decisoes={8: "Agendar"})

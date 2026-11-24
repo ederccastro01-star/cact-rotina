@@ -53,3 +53,19 @@ def test_conciliacao_falha_vai_para_o_topo(tmp_path):
     gerar_paralela([linha()], [], caminho, date(2026, 10, 16), {"atos": 1, "processos": 1, "ids": 2, "ok": False, "faltam": ["99"]})
     ws = openpyxl.load_workbook(caminho)["Lançamentos"]
     assert "ATENÇÃO" in str(ws["A6"].value) and "99" in str(ws["A6"].value)
+
+
+def test_contadores_lancamentos(tmp_path):
+    """Pedido de 24/11/2026: contadores em L1:M5 da aba Lançamentos, por fórmula (mudam quando N é preenchida)."""
+    caminho = str(tmp_path / "CACT - Agenda Paralela 16-10-2026.xlsx")
+    gerar_paralela([linha(), linha(ids="3")], [], caminho, date(2026, 10, 16), {"ok": True})
+    ws = openpyxl.load_workbook(caminho)["Lançamentos"]
+    assert [ws.cell(r, 12).value for r in range(1, 6)] == ["Total das Publicações", "Agendar", "Descartar",
+                                                          "Corrigir e agendar", "Falta Decisão"]
+    assert ws["M1"].value == "=COUNTA($E$8:$E$5000)"
+    assert ws["M2"].value == '=COUNTIF($N$8:$N$5000,"Agendar")'
+    assert ws["M3"].value == '=COUNTIF($N$8:$N$5000,"Descartar")'
+    assert ws["M4"].value == '=COUNTIF($N$8:$N$5000,"Corrigir e agendar")'
+    assert ws["M5"].value == '=COUNTIFS($E$8:$E$5000,"<>",$N$8:$N$5000,"")'
+    assert "Total das Publicações" not in [ws.cell(1, 12).value for ws in openpyxl.load_workbook(caminho).worksheets
+                                           if ws.title != "Lançamentos"]

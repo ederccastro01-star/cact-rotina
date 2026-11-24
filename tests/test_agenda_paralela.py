@@ -185,3 +185,55 @@ def test_desfazer_apaga_linha_inteira(cfg, tmp_path, monkeypatch):
     rz = tmp_path / "r.json"; razao.salvar(str(rz))
     assert ap.desfazer(cfg, str(rz)) == 2
     assert eventos == [("Rows.Delete", 11), ("Rows.Delete", 9), ("Save",)]      # de baixo para cima, depois salva
+
+
+def _linha_proc(ids, processo, destino):
+    l = _linha(ids)
+    l.processo, l.destino = processo, destino
+    return l
+
+
+def test_pendentes_processo_novo_no_topo_em_vermelho(cfg, tmp_path, monkeypatch):
+    """Pedido de 24/11/2026: pendente de processo que continua fora da Agenda vai ao topo, em vermelho, com aviso e guia vermelha."""
+    _cfg_pc(cfg, tmp_path)
+    monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None)
+    _paralela(cfg, date(2026, 10, 15), [_linha_proc("1", "0000001-11.2026.5.18.0001", "PRAZO DO ESCRITÓRIO"),
+                                        _linha_proc("2", "0000002-22.2026.5.18.0002", "PROCESSO NOVO"),
+                                        _linha_proc("3", "0000003-33.2026.5.18.0003", "PROCESSO NOVO")])
+    hoje = _paralela(cfg, date(2026, 10, 16), [])
+    # o 0000003 foi agendado à mão depois; o 0000002 continua fora da Agenda
+    monkeypatch.setattr(ap, "processos_na_agenda", lambda c: {"00000011120265180001", "00000033320265180003"})
+    pend = ap.montar_pendentes(cfg, date(2026, 10, 16))
+    assert [(p["ids"], p["novo"]) for p in pend][0] == (["2"], True)
+    assert sum(p["novo"] for p in pend) == 1
+    ws = openpyxl.load_workbook(hoje)["Pendentes"]
+    assert ws["E8"].value == "0000002-22.2026.5.18.0002" and ws["M8"].value == "PROCESSO NOVO"
+    assert ws["P8"].value.startswith(ap.AVISO_NOVO)
+    assert ws["A8"].fill.fgColor.rgb.endswith(ap.NOVO_FUNDO) and ws["A8"].font.bold
+    assert "1 processo(s) NOVO(S)" in ws["A6"].value and ws.sheet_properties.tabColor.rgb.endswith("FF0000")
+    assert ws["M9"].value != "PROCESSO NOVO" and not ws["A9"].font.bold
+    assert "PROCESSO NOVO (já consta da Agenda)" in {ws["M9"].value, ws["M10"].value}
+
+
+def test_pendentes_sem_agenda_usa_destino_gravado(cfg, tmp_path, monkeypatch):
+    _cfg_pc(cfg, tmp_path)
+    monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None)
+    _paralela(cfg, date(2026, 10, 15), [_linha_proc("1", "0000001-11.2026.5.18.0001", "PRAZO DO ESCRITÓRIO"),
+                                        _linha_proc("2", "0000002-22.2026.5.18.0002", "PROCESSO NOVO")])
+    hoje = _paralela(cfg, date(2026, 10, 16), [])
+    monkeypatch.setattr(ap, "processos_na_agenda", lambda c: None)
+    pend = ap.montar_pendentes(cfg, date(2026, 10, 16))
+    assert [p["ids"] for p in pend] == [["2"], ["1"]] and pend[0]["novo"] and not pend[1]["novo"]
+    ws = openpyxl.load_workbook(hoje)["Pendentes"]
+    assert ws["A6"].value.startswith("ATENÇÃO: 1 processo")
+
+
+def test_pendentes_sem_novo_nao_avisa(cfg, tmp_path, monkeypatch):
+    _cfg_pc(cfg, tmp_path)
+    monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None)
+    _paralela(cfg, date(2026, 10, 15), [_linha("1")])
+    hoje = _paralela(cfg, date(2026, 10, 16), [])
+    monkeypatch.setattr(ap, "processos_na_agenda", lambda c: {"00000011120265180001"})
+    ap.montar_pendentes(cfg, date(2026, 10, 16))
+    ws = openpyxl.load_workbook(hoje)["Pendentes"]
+    assert ws["A6"].value in (None, "") and ws.sheet_properties.tabColor is None

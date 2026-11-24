@@ -135,7 +135,7 @@ def test_conferir_push_e_idempotente(cfg, tmp_path, monkeypatch):
 
 def test_passo_vigia_chama_conferencia_push(cfg, tmp_path, monkeypatch):
     _cfg_pc(cfg, tmp_path); monkeypatch.setattr(ap, "_livro_aberto_no_excel", lambda c: None)
-    monkeypatch.setattr(ap, "avisar", lambda m: None); monkeypatch.setattr(ap, "abrir_para_o_advogado", lambda c, n=0: None)
+    monkeypatch.setattr(ap, "avisar", lambda m: None); monkeypatch.setattr(ap, "abrir_para_o_advogado", lambda c, n=0, k=0: None)
     monkeypatch.setattr(ap, "arquivo_pronto", lambda c, agora=None: True)
     chamadas = []
     monkeypatch.setattr(ap, "conferir_push", lambda cfg_, dia: chamadas.append(dia) or [])

@@ -164,10 +164,79 @@ def _paralelas_anteriores(cfg: dict, hoje: date, dias: int) -> list[tuple[date, 
     return sorted(out)
 
 
+# Processo NOVO em Pendentes (pedido do advogado, 24/11/2026): linha de dia anterior, ainda sem decisão, de processo que
+# continua fora da Agenda (conferido na hora, por cópia). É o caso de maior risco de perder prazo: vai para o topo, em
+# vermelho, com aviso na linha 6, guia vermelha e menção no aviso da manhã.
+NOVO = "PROCESSO NOVO"
+AVISO_NOVO = "NÃO CONSTA DA AGENDA: AGENDAR COM PRIORIDADE"
+NOVO_FUNDO, NOVO_FONTE = "FFC7CE", "9C0006"
+
+
+def _bgr(hexa: str) -> int:
+    """'RRGGBB' → inteiro de cor do Excel (COM usa BGR)."""
+    return int(hexa[4:6], 16) * 65536 + int(hexa[2:4], 16) * 256 + int(hexa[0:2], 16)
+
+
+def processos_na_agenda(cfg: dict) -> set[str] | None:
+    """Números (só dígitos) de todos os processos da Agenda, em todas as abas, lidos por CÓPIA. None se não deu para ler."""
+    from pc import arquivos
+    from pc.push import _norm
+    caminho = caminho_agenda(cfg)
+    if not os.path.exists(caminho):
+        return None
+    try:
+        tmp = arquivos.copia_temporaria(caminho, prefixo="agenda_novos_")
+    except Exception as e:  # noqa: BLE001
+        _log(f"Pendentes: não li a Agenda para achar processo novo ({e}); uso o destino gravado na linha")
+        return None
+    out: set[str] = set()
+    try:
+        wb = openpyxl.load_workbook(tmp, read_only=True, data_only=True)
+        try:
+            for ws in wb.worksheets:
+                for row in ws.iter_rows(min_row=PRIMEIRA_LINHA, min_col=5, max_col=5, values_only=True):
+                    n = _norm(row[0]) if row else None
+                    if n:
+                        out.add(n)
+        finally:
+            wb.close()
+    except Exception as e:  # noqa: BLE001
+        _log(f"Pendentes: não li a Agenda para achar processo novo ({e}); uso o destino gravado na linha")
+        return None
+    finally:
+        import shutil
+        shutil.rmtree(os.path.dirname(tmp), ignore_errors=True)
+    return out
+
+
+def marcar_novos(pendentes: list[dict], na_agenda: set[str] | None) -> list[dict]:
+    """Marca l["novo"] e devolve a lista com os novos no topo (o resto na ordem de antes). Sem a Agenda (`na_agenda`
+    None), vale o destino gravado na linha de origem."""
+    from pc.push import _norm
+    for l in pendentes:
+        n = _norm(l["a_k"][4])
+        if not n:
+            l["novo"] = False
+        elif na_agenda is None:
+            l["novo"] = str(l.get("destino") or "").strip().upper() == NOVO
+        else:
+            l["novo"] = n not in na_agenda
+    return sorted(pendentes, key=lambda l: not l["novo"])
+
+
+def _texto_aviso_novos(n: int) -> str:
+    return (f"ATENÇÃO: {n} processo(s) NOVO(S) que não consta(m) da Agenda de Prazos, sem decisão (linhas em vermelho "
+            f"no topo). Agende com prioridade: o risco de perder o prazo é maior.")
+
+
 def _valores_pendente(l: dict, cols: dict) -> dict[int, object]:
     """coluna → valor de uma linha de Pendentes, nas colunas do arquivo de DESTINO (`cols`); a linha pode ter vindo de
     uma Paralela do desenho antigo."""
-    v = {cols["motivo"]: l["motivo"], cols["link"]: l["link"], cols["ids"]: ";".join(l["ids"]), cols["obs"]: l["origem"]}
+    motivo = f"{AVISO_NOVO}; {l['motivo']}" if l.get("novo") and l["motivo"] else (AVISO_NOVO if l.get("novo") else l["motivo"])
+    v = {cols["motivo"]: motivo, cols["link"]: l["link"], cols["ids"]: ";".join(l["ids"]), cols["obs"]: l["origem"]}
+    d = str(l.get("destino") or "").strip()
+    if cols.get("destino") and (l.get("novo") or d):
+        v[cols["destino"]] = NOVO if l.get("novo") else (f"{d} (já consta da Agenda)" if d.upper() == NOVO else d)
     if l.get("prazo_calculado") is not None and cols.get("prazo_calculado"):
         v[cols["prazo_calculado"]] = l["prazo_calculado"]
     if l.get("despacho_anterior") and cols.get("despacho_anterior"):
@@ -182,10 +251,21 @@ def _escrever_linha_paralela(ws_openpyxl, r: int, l: dict, cols: dict) -> None:
         ws_openpyxl.cell(r, c, v)
     # linha de publicação como em Lançamentos (pedido do advogado, 20/11/2026): texto corrido justificado, o resto
     # centralizado, centro na vertical; sem altura gravada, o Excel ajusta a linha ao texto
-    from openpyxl.styles import Alignment
+    from openpyxl.styles import Alignment, Font, PatternFill
     justificadas = {11} | {cols[k] for k in ("despacho_anterior", "motivo", "obs") if cols.get(k)}
     for c in range(1, max(cols.values()) + 1):
-        ws_openpyxl.cell(r, c).alignment = Alignment(horizontal="justify" if c in justificadas else "center", vertical="center", wrap_text=True)
+        cel = ws_openpyxl.cell(r, c)
+        cel.alignment = Alignment(horizontal="justify" if c in justificadas else "center", vertical="center", wrap_text=True)
+        if l.get("novo"):
+            cel.fill = PatternFill("solid", fgColor=NOVO_FUNDO)
+            cel.font = Font(name="Courier New" if c == 5 else "Arial", size=10, bold=True, color=NOVO_FONTE)
+
+
+def _aviso_novos_openpyxl(ws, n: int) -> None:
+    from openpyxl.styles import Font
+    ws["A6"] = _texto_aviso_novos(n)
+    ws["A6"].font = Font(name="Arial", size=11, bold=True, color="C00000")
+    ws.sheet_properties.tabColor = "FF0000"
 
 
 def montar_pendentes(cfg: dict, hoje: date, dias: int = 30) -> list[dict]:
@@ -204,6 +284,8 @@ def montar_pendentes(cfg: dict, hoje: date, dias: int = 30) -> list[dict]:
             if l["aba"] == "Lançamentos" and not l["decisao"] and not l["lote"] and not (set(l["ids"]) & decididos):
                 l["origem"] = f"Paralela {d:%d-%m-%Y} (sem decisão)"
                 pendentes.append(l)
+    pendentes = marcar_novos(pendentes, processos_na_agenda(cfg) if pendentes else set())
+    n_novos = sum(1 for l in pendentes if l["novo"])
     destino = caminho_paralela(cfg, hoje)
     if not os.path.exists(destino):
         return pendentes
@@ -227,7 +309,22 @@ def montar_pendentes(cfg: dict, hoje: date, dias: int = 30) -> list[dict]:
                 for cj in {11} | {cols[k] for k in ("despacho_anterior", "motivo", "obs") if cols.get(k)}:
                     com(lambda r=r, cj=cj: setattr(ws.Cells(r, cj), "HorizontalAlignment", -4130))
                 com(lambda r=r: setattr(ws.Rows(r), "WrapText", True))
+                if l["novo"]:
+                    ult = max(cols.values())
+                    faixa = lambda r=r: ws.Range(ws.Cells(r, 1), ws.Cells(r, ult))     # noqa: E731
+                    com(lambda: setattr(faixa().Interior, "Color", _bgr(NOVO_FUNDO)))
+                    com(lambda: setattr(faixa().Font, "Color", _bgr(NOVO_FONTE)))
+                    com(lambda: setattr(faixa().Font, "Bold", True))
                 com(lambda r=r: ws.Rows(r).AutoFit())
+            except Exception:  # noqa: BLE001 — só aparência
+                pass
+        if n_novos:
+            com(set_cell, ws, 6, 1, _texto_aviso_novos(n_novos))
+            try:
+                com(lambda: setattr(ws.Cells(6, 1).Font, "Bold", True))
+                com(lambda: setattr(ws.Cells(6, 1).Font, "Size", 11))
+                com(lambda: setattr(ws.Cells(6, 1).Font, "Color", _bgr("C00000")))
+                com(lambda: setattr(ws.Tab, "Color", _bgr("FF0000")))
             except Exception:  # noqa: BLE001 — só aparência
                 pass
     else:
@@ -235,17 +332,23 @@ def montar_pendentes(cfg: dict, hoje: date, dias: int = 30) -> list[dict]:
         ws = wb["Pendentes"]
         for i, l in enumerate(pendentes):
             _escrever_linha_paralela(ws, PRIMEIRA_LINHA + i, l, cols)
+        if n_novos:
+            _aviso_novos_openpyxl(ws, n_novos)
         wb.save(destino)
+    if n_novos:
+        _log(f"Pendentes: {n_novos} processo(s) novo(s) fora da Agenda, sem decisão")
     return pendentes
 
 
-def abrir_para_o_advogado(caminho: str, n_pendentes: int = 0) -> None:
+def abrir_para_o_advogado(caminho: str, n_pendentes: int = 0, n_novos: int = 0) -> None:
     linhas = [l for l in ler_paralela(caminho) if l["aba"] == "Lançamentos"]
     conferir = sum(1 for l in linhas if l["motivo"])
     try:
         os.startfile(caminho)  # type: ignore[attr-defined]
     except OSError as e:
         _log(f"não abri a Paralela: {e}")
+    if n_novos:
+        avisar(f"ATENÇÃO: {n_novos} PROCESSO(S) NOVO(S) em Pendentes, fora da Agenda e sem decisão: agendar com prioridade")
     avisar(f"Paralela de hoje: {len(linhas)} linhas, {conferir} CONFERIR, {n_pendentes} pendentes de dias anteriores")
 
 
@@ -738,7 +841,7 @@ def passo_vigia(cfg: dict, dia: date, agora: datetime, estado: Estado) -> None:
         return
     if not estado.abriu:
         estado.pendentes = montar_pendentes(cfg, dia)
-        abrir_para_o_advogado(caminho, len(estado.pendentes))
+        abrir_para_o_advogado(caminho, len(estado.pendentes), sum(1 for l in estado.pendentes if l.get("novo")))
         estado.abriu = True
         estado.mtime_visto = os.stat(caminho).st_mtime
         return

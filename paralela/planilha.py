@@ -61,7 +61,10 @@ LEIA_ME = [
      "ajuste antes a data (A), a peça (C) ou a nota (K) na própria linha.", False),
     ("3. Salve e clique no atalho 'Transportar Paralela agora' (Área de Trabalho). O script do PC grava as linhas 'Agendar' e 'Corrigir e agendar' na aba Publicações da Agenda oficial, "
      "copiando A a K como estão, e carimba a coluna X (Lote) com 'Transportado em ...'.", False),
-    ("4. Linha sem decisão não se perde: amanhã aparece na aba Pendentes e no aviso da manhã.", False),
+    ("4. Linha sem decisão não se perde: amanhã aparece na aba Pendentes e no aviso da manhã. Em Pendentes, processo que "
+     "ainda NÃO CONSTA DA AGENDA vem no topo, em vermelho, com o aviso na linha 6 e a guia vermelha: agende primeiro.", False),
+    ("5. Os contadores no alto da aba Lançamentos (L1 a M5) mostram o total de linhas e quantas já têm Agendar, Descartar e "
+     "Corrigir e agendar; 'Falta Decisão' fica vermelho enquanto houver linha sem decisão.", False),
     ("", False),
     ("O que a máquina decide e o que você decide", True),
     ("Máquina: polo do intimado (DJEN), destino (polo x coluna J), data (dias úteis, feriados, tabela legal; na dúvida a "
@@ -179,6 +182,35 @@ def _aba(wb, titulo, subtitulo, nome, linhas: list[Linha], ordenar=True):
     return ws, row
 
 
+# Contadores da aba Lançamentos (pedido do advogado, 24/11/2026): linhas 1 a 5, rótulo em L e número em M. São fórmulas:
+# mudam sozinhos quando a coluna N (Decisão) é preenchida. Intervalo largo para contar também as linhas que a conferência
+# PUSH acrescenta depois. A linha da conciliação, embaixo da tabela, fica na coluna A e não entra na conta.
+ULTIMA_LINHA_CONTADOR = 5000
+CONTADOR_FILL = PatternFill("solid", fgColor="DDEBF7")
+
+
+def _contadores(ws) -> None:
+    e = f"$E$8:$E${ULTIMA_LINHA_CONTADOR}"
+    n = f"${get_column_letter(C_DECISAO)}$8:${get_column_letter(C_DECISAO)}${ULTIMA_LINHA_CONTADOR}"
+    itens = [("Total das Publicações", f"=COUNTA({e})"),
+             ("Agendar", f'=COUNTIF({n},"Agendar")'),
+             ("Descartar", f'=COUNTIF({n},"Descartar")'),
+             ("Corrigir e agendar", f'=COUNTIF({n},"Corrigir e agendar")'),
+             ("Falta Decisão", f'=COUNTIFS({e},"<>",{n},"")')]
+    c_rot, c_num = C_DESP_ANT, C_DESP_ANT + 1          # L e M
+    for i, (rotulo, formula) in enumerate(itens, start=1):
+        r = ws.cell(row=i, column=c_rot, value=rotulo)
+        r.font = Font(name="Arial", size=10, bold=True); r.fill = CONTADOR_FILL; r.border = BORDA
+        r.alignment = Alignment(horizontal="right", vertical="center")
+        v = ws.cell(row=i, column=c_num, value=formula)
+        v.font = Font(name="Arial", size=11, bold=True); v.fill = CONTADOR_FILL; v.border = BORDA; v.alignment = CENTRO
+    from openpyxl.formatting.rule import CellIsRule
+    alvo = f"{get_column_letter(c_num)}5"
+    ws.conditional_formatting.add(alvo, CellIsRule(operator="greaterThan", formula=["0"],
+                                                   font=Font(name="Arial", size=11, bold=True, color="C00000"),
+                                                   fill=PatternFill(fill_type="solid", start_color="FFC7CE", end_color="FFC7CE")))   # na formatação condicional o Excel lê o fundo em bgColor (end_color)
+
+
 def gerar_paralela(lancamentos: list[Linha], fora: list[Linha], caminho: str, data_disp: date, conciliacao: dict,
                    parceiros: list | None = None, nota_parceiros: str = "") -> str:
     """`parceiros`: registros da aba "Parceiros - Liquidação" (lista acumulada). None = arquivo sem a aba (Paralela criada
@@ -194,6 +226,7 @@ def gerar_paralela(lancamentos: list[Linha], fora: list[Linha], caminho: str, da
                    "Gerada pela rotina do CACT ao ligar o computador. Ordem: PROCESSO NOVO e CONFERIR no topo; depois PRAZO DO ESCRITÓRIO "
                    "por data; PARTE CONTRÁRIA por último. Polo e data por código; peça e resumo pela IA.",
                    "Lançamentos", lancamentos)
+    _contadores(ws)
     n_esc = sum(1 for l in lancamentos if l.destino == "PRAZO DO ESCRITÓRIO")
     n_con = sum(1 for l in lancamentos if l.destino == "PARTE CONTRÁRIA")
     n_novo = sum(1 for l in lancamentos if l.destino == "PROCESSO NOVO")

@@ -82,7 +82,7 @@ def test_cli_agora(cfg, tmp_path, monkeypatch):
 
 def _pronto(monkeypatch):
     monkeypatch.setattr(ap, "arquivo_pronto", lambda c, agora=None: True)
-    monkeypatch.setattr(ap, "abrir_para_o_advogado", lambda c, n=0: None)
+    monkeypatch.setattr(ap, "abrir_para_o_advogado", lambda c, n=0, k=0: None)
     monkeypatch.setattr(ap, "coletar", lambda *a, **k: {"novos": 0, "registros": 0, "caminho": None})
     monkeypatch.setattr(ap, "verificar_persistencia", lambda *a, **k: [])
 
